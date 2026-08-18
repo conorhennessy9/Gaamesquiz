@@ -1,40 +1,40 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
-import { Menu, X, Home, Mail, Info, FileText, Shield, ChevronRight } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { Menu, X } from "lucide-react"
+import { NAV_SECTIONS, isNavItemActive } from "@/components/nav-config"
 
 interface NavigationMenuProps {
+  /** @deprecated kept for backward compatibility, active state is now derived from the pathname */
   currentSection?: "rugby" | "gaa" | "home"
 }
 
-export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps) {
+export function NavigationMenu(_props: NavigationMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const pathname = usePathname()
 
-  return (
+  // Portal the drawer to document.body so it isn't clipped by any ancestor
+  // header using `backdrop-blur`, which creates its own containing block
+  // for fixed-position descendants.
+  useEffect(() => setMounted(true), [])
+
+  const drawer = (
     <>
-      {/* Trigger */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
-        aria-label="Open navigation"
-      >
-        <Menu className="w-5 h-5" />
-        <span className="text-xs font-semibold tracking-widest uppercase">Menu</span>
-      </button>
-
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 left-0 h-full w-72 bg-[#0f0f0f] border-r border-white/[0.06] z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-full w-72 bg-[#0f0f0f] border-r border-white/[0.06] z-50 flex flex-col transition-transform duration-300 ease-in-out lg:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -55,34 +55,55 @@ export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps)
           </button>
         </div>
 
-        {/* Nav links */}
-        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-          <p className="text-[10px] font-bold tracking-widest uppercase text-white/30 px-3 pb-2">Home</p>
-          <NavLink href="/" icon={<Home className="w-4 h-4" />} label="Home" onClick={() => setIsOpen(false)} />
+        {/* Nav sections */}
+        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-7">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title}>
+              <p className="text-[10px] font-bold tracking-widest uppercase text-white/30 px-3 pb-2">
+                {section.title}
+              </p>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  const active = isNavItemActive(item, pathname)
 
-          <p className="text-[10px] font-bold tracking-widest uppercase text-white/30 px-3 pb-2 pt-6">Sports</p>
-          <NavLink
-            href="/rugby"
-            icon={<span className="w-4 h-4 flex items-center justify-center rounded text-[10px] font-black bg-violet-500 text-white">R</span>}
-            label="Rugby"
-            active={currentSection === "rugby"}
-            activeColor="bg-violet-500/10 text-violet-300"
-            onClick={() => setIsOpen(false)}
-          />
-          <NavLink
-            href="/gaa"
-            icon={<span className="w-4 h-4 flex items-center justify-center rounded text-[10px] font-black bg-emerald-500 text-white">G</span>}
-            label="GAA"
-            active={currentSection === "gaa"}
-            activeColor="bg-emerald-500/10 text-emerald-300"
-            onClick={() => setIsOpen(false)}
-          />
+                  if (item.soon) {
+                    return (
+                      <div
+                        key={item.label}
+                        className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-white/25 cursor-not-allowed"
+                        title="Coming soon"
+                      >
+                        <span className="flex items-center gap-3">
+                          <Icon className="w-4 h-4" />
+                          {item.label}
+                        </span>
+                        <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white/30">
+                          Soon
+                        </span>
+                      </div>
+                    )
+                  }
 
-          <p className="text-[10px] font-bold tracking-widest uppercase text-white/30 px-3 pb-2 pt-6">Info</p>
-          <NavLink href="/about" icon={<Info className="w-4 h-4" />} label="About" onClick={() => setIsOpen(false)} />
-          <NavLink href="/contact" icon={<Mail className="w-4 h-4" />} label="Contact" onClick={() => setIsOpen(false)} />
-          <NavLink href="/terms" icon={<FileText className="w-4 h-4" />} label="Terms of Service" onClick={() => setIsOpen(false)} />
-          <NavLink href="/privacy" icon={<Shield className="w-4 h-4" />} label="Privacy Policy" onClick={() => setIsOpen(false)} />
+                  return (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setIsOpen(false)}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                        active
+                          ? "bg-[#e8ff47]/10 text-[#e8ff47]"
+                          : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* Footer tag */}
@@ -92,36 +113,22 @@ export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps)
       </div>
     </>
   )
-}
 
-function NavLink({
-  href,
-  icon,
-  label,
-  active = false,
-  activeColor = "bg-[#e8ff47]/10 text-[#e8ff47]",
-  onClick,
-}: {
-  href: string
-  icon: React.ReactNode
-  label: string
-  active?: boolean
-  activeColor?: string
-  onClick: () => void
-}) {
   return (
-    <Link
-      href={href}
-      onClick={onClick}
-      className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-        active ? activeColor : "text-white/60 hover:text-white hover:bg-white/[0.05]"
-      }`}
-    >
-      <span className="flex items-center gap-3">
-        {icon}
-        {label}
-      </span>
-      <ChevronRight className="w-3.5 h-3.5 opacity-40" />
-    </Link>
+    <>
+      {/* Trigger — only shown below the desktop breakpoint, since the
+          persistent sidebar (components/desktop-sidebar.tsx) covers lg+ */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="lg:hidden flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+        aria-label="Open navigation"
+      >
+        <Menu className="w-5 h-5" />
+        <span className="text-xs font-semibold tracking-widest uppercase">Menu</span>
+      </button>
+
+      {mounted ? createPortal(drawer, document.body) : null}
+    </>
   )
 }

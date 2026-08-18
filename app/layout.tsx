@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
 import { Inter, Barlow } from "next/font/google"
+import { SiteShell } from "@/components/site-shell"
 
 /* Body font — clean and highly legible */
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -47,7 +48,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.className} antialiased`}>{children}</body>
+      <body className={`${inter.className} antialiased`}>
+        <SiteShell>{children}</SiteShell>
+      </body>
     </html>
   )
 }
