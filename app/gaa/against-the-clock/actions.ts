@@ -12,7 +12,7 @@ export interface GAAClockQuestion {
 }
 
 export async function getGAAClockQuestions(): Promise<GAAClockQuestion[]> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("gaa_clock_questions")
     .select("*")
@@ -27,7 +27,7 @@ export async function getGAAClockQuestions(): Promise<GAAClockQuestion[]> {
 }
 
 export async function getGAAClockQuestionByDate(date: string): Promise<GAAClockQuestion | null> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase.from("gaa_clock_questions").select("*").eq("question_date", date).maybeSingle()
 
   if (error) {
@@ -41,7 +41,7 @@ export async function getGAAClockQuestionByDate(date: string): Promise<GAAClockQ
 export async function createGAAClockQuestion(
   questionData: Omit<GAAClockQuestion, "id" | "created_at">,
 ): Promise<{ success: boolean; error?: string; data?: GAAClockQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // Check if a question for this date already exists
   const { data: existingQuestion, error: fetchError } = await supabase
@@ -84,7 +84,7 @@ export async function updateGAAClockQuestion(
   id: number,
   questionData: Partial<Omit<GAAClockQuestion, "id" | "created_at">>,
 ): Promise<{ success: boolean; error?: string; data?: GAAClockQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // If question_date is being updated, check for conflicts
   if (questionData.question_date) {
@@ -127,7 +127,7 @@ export async function updateGAAClockQuestion(
 }
 
 export async function deleteGAAClockQuestion(id: number): Promise<{ success: boolean; error?: string }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { error } = await supabase.from("gaa_clock_questions").delete().eq("id", id)
 
   if (error) {

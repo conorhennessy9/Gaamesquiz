@@ -2,56 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { QuizQuestion, Sport, GameType } from "./types"
+import type { QuizQuestion } from "./types"
+import type { QuestionFormValues, FormOptions, SaveResult } from "./question-form-types"
 
 // Server actions for the Add/Edit Question editor (/admin/questions/new and
 // /admin/questions/[id]/edit). Reads and writes the `quiz_questions` table
 // only — no per-sport gameplay table (rugby_tenaball_questions,
 // gaa_tenaball_questions, rugby_clock_questions, gaa_clock_questions) is
 // touched, so public game functionality is unaffected.
-
-export interface QuestionFormValues {
-  question_text: string
-  sport: Sport | ""
-  competition: string
-  theme: string
-  game_type: GameType | ""
-  difficulty: "easy" | "medium" | "hard" | "expert" | ""
-  evergreen_type: "true_evergreen" | "semi_evergreen" | "snapshot" | "live" | ""
-  review_frequency: "never" | "annual" | "competition_end" | "monthly" | "manual" | ""
-  update_trigger: string
-  last_verified_at: string // yyyy-MM-dd or ""
-  snapshot_period: string
-  notes: string
-  cooldown_years: "1" | "2" | "3" | "4" | ""
-  scheduled_date: string // yyyy-MM-dd or "" (stored in question_date)
-  scheduled_position: string // numeric string or ""
-  status: "draft" | "needs_review" | "verified" | "scheduled" | "published"
-}
-
-export const EMPTY_QUESTION_FORM: QuestionFormValues = {
-  question_text: "",
-  sport: "",
-  competition: "",
-  theme: "",
-  game_type: "",
-  difficulty: "",
-  evergreen_type: "",
-  review_frequency: "",
-  update_trigger: "",
-  last_verified_at: "",
-  snapshot_period: "",
-  notes: "",
-  cooldown_years: "",
-  scheduled_date: "",
-  scheduled_position: "",
-  status: "draft",
-}
-
-export interface FormOptions {
-  competitions: string[]
-  themes: string[]
-}
+//
+// NOTE: this file has the "use server" directive, so it may only export
+// async functions. Shared types/constants live in ./question-form-types.
 
 const SEED_COMPETITIONS = [
   "Six Nations",
@@ -150,13 +111,6 @@ export async function getQuestionForEdit(
   }
 
   return { question: q as QuizQuestion, formValues }
-}
-
-export interface SaveResult {
-  success: boolean
-  id?: number
-  error?: string
-  fieldErrors?: Partial<Record<keyof QuestionFormValues, string>>
 }
 
 function validate(values: QuestionFormValues): SaveResult["fieldErrors"] {

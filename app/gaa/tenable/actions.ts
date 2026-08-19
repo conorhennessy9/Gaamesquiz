@@ -14,7 +14,7 @@ export interface GAATenaBallQuestion {
 
 export async function getGAATenaBallQuestions(): Promise<GAATenaBallQuestion[]> {
   try {
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
     const { data, error } = await supabase
       .from("gaa_tenaball_questions")
       .select("*")
@@ -34,7 +34,7 @@ export async function getGAATenaBallQuestions(): Promise<GAATenaBallQuestion[]> 
 
 export async function getGAATenaBallQuestionByDate(date: string): Promise<GAATenaBallQuestion | null> {
   try {
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
     const { data, error } = await supabase
       .from("gaa_tenaball_questions")
       .select("*")
@@ -59,7 +59,7 @@ export async function createGAATenaBallQuestion(
   questionDate: string,
 ): Promise<{ success: boolean; message: string; question?: GAATenaBallQuestion }> {
   try {
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
 
     // Check if a question already exists for this date
     const { data: existingQuestion } = await supabase
@@ -118,7 +118,7 @@ export async function updateGAATenaBallQuestion(
   questionDate: string,
 ): Promise<{ success: boolean; message: string; question?: GAATenaBallQuestion }> {
   try {
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
 
     // Check if updating the date would conflict with another question
     const { data: existingQuestion } = await supabase
@@ -175,7 +175,7 @@ export async function updateGAATenaBallQuestion(
 
 export async function deleteGAATenaBallQuestion(id: number): Promise<{ success: boolean; message: string }> {
   try {
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
     const { error } = await supabase.from("gaa_tenaball_questions").delete().eq("id", id)
 
     if (error) {

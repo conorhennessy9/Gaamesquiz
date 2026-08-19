@@ -1,4 +1,5 @@
-import { getFormOptions, EMPTY_QUESTION_FORM } from "@/lib/cms/question-form-actions"
+import { getFormOptions } from "@/lib/cms/question-form-actions"
+import { EMPTY_QUESTION_FORM } from "@/lib/cms/question-form-types"
 import QuestionForm from "../question-form"
 
 export const metadata = {

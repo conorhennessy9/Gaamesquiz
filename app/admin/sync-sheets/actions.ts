@@ -47,7 +47,7 @@ export async function syncQuestionsFromSheet(
 
     // Determine the table name
     const tableName = getTableName(gameType)
-    const supabase = createSupabaseServerAdminClient()
+    const supabase = await createSupabaseServerAdminClient()
 
     // Process each question
     for (const question of questions) {

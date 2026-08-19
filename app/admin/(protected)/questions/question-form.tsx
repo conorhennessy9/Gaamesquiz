@@ -21,13 +21,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ComboboxField } from "@/components/admin/combobox-field"
 import { DatePickerField } from "@/components/admin/date-picker-field"
-import {
-  createQuestion,
-  updateQuestion,
-  type FormOptions,
-  type QuestionFormValues,
-  type SaveResult,
-} from "@/lib/cms/question-form-actions"
+import { createQuestion, updateQuestion } from "@/lib/cms/question-form-actions"
+import type { FormOptions, QuestionFormValues, SaveResult } from "@/lib/cms/question-form-types"
 
 const SPORT_OPTIONS = [
   { value: "rugby", label: "Rugby" },

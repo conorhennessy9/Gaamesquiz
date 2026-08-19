@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { RugbyTenaBallQuestion } from "./types"
 
 export async function getRugbyTenaBallQuestions(): Promise<RugbyTenaBallQuestion[]> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_tenaball_questions")
     .select("*")
@@ -20,7 +20,7 @@ export async function getRugbyTenaBallQuestions(): Promise<RugbyTenaBallQuestion
 }
 
 export async function getRugbyTenaBallQuestionByDate(date: string): Promise<RugbyTenaBallQuestion | null> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_tenaball_questions")
     .select("*")
@@ -38,7 +38,7 @@ export async function getRugbyTenaBallQuestionByDate(date: string): Promise<Rugb
 export async function createRugbyTenaBallQuestion(
   questionData: Omit<RugbyTenaBallQuestion, "id" | "created_at">,
 ): Promise<{ success: boolean; error?: string; data?: RugbyTenaBallQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // Validate date format if necessary, though Supabase client should handle it
   // For example: if (!/^\d{4}-\d{2}-\d{2}$/.test(questionData.question_date)) {
@@ -86,7 +86,7 @@ export async function updateRugbyTenaBallQuestion(
   id: number,
   questionData: Partial<Omit<RugbyTenaBallQuestion, "id" | "created_at">>,
 ): Promise<{ success: boolean; error?: string; data?: RugbyTenaBallQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // If question_date is being updated, check for conflicts
   if (questionData.question_date) {
@@ -128,7 +128,7 @@ export async function updateRugbyTenaBallQuestion(
 }
 
 export async function deleteRugbyTenaBallQuestion(id: number): Promise<{ success: boolean; error?: string }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { error } = await supabase.from("rugby_tenaball_questions").delete().eq("id", id)
 
   if (error) {

@@ -17,9 +17,7 @@ import type { QuizQuestion } from "./types"
 // keeps working today (those fields simply render as "Not tracked yet") and
 // automatically lights up once the columns exist — no code changes needed.
 
-export const QUESTIONS_PAGE_SIZE = 25
-
-export type SortableColumn = "question_date" | "created_at" | "difficulty" | "status"
+const QUESTIONS_PAGE_SIZE = 25
 
 export interface QuestionLibraryFilters {
   search?: string

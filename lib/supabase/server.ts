@@ -1,8 +1,8 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies()
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies()
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,11 +24,11 @@ export function createSupabaseServerClient() {
 }
 
 // Alias export for common usage pattern
-export function createClient() {
+export async function createClient() {
   return createSupabaseServerClient()
 }
 
-export function createSupabaseServerAdminClient() {
+export async function createSupabaseServerAdminClient() {
   // For admin actions using the service_role key, we might not need
   // the full cookie management if we're not dealing with user sessions.
   // However, createServerClient from @supabase/ssr expects a cookie interface.
@@ -39,7 +39,7 @@ export function createSupabaseServerAdminClient() {
 
   // Let's align it with how createSupabaseServerClient is defined,
   // as Server Actions will provide the cookie context.
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
 
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     cookies: {

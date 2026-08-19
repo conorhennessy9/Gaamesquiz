@@ -12,7 +12,7 @@ export interface RugbyClockQuestion {
 }
 
 export async function getRugbyClockQuestions(): Promise<RugbyClockQuestion[]> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_clock_questions")
     .select("*")
@@ -27,7 +27,7 @@ export async function getRugbyClockQuestions(): Promise<RugbyClockQuestion[]> {
 }
 
 export async function getRugbyClockQuestionByDate(date: string): Promise<RugbyClockQuestion | null> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_clock_questions")
     .select("*")
@@ -45,7 +45,7 @@ export async function getRugbyClockQuestionByDate(date: string): Promise<RugbyCl
 export async function createRugbyClockQuestion(
   questionData: Omit<RugbyClockQuestion, "id" | "created_at">,
 ): Promise<{ success: boolean; error?: string; data?: RugbyClockQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // Check if a question for this date already exists
   const { data: existingQuestion, error: fetchError } = await supabase
@@ -88,7 +88,7 @@ export async function updateRugbyClockQuestion(
   id: number,
   questionData: Partial<Omit<RugbyClockQuestion, "id" | "created_at">>,
 ): Promise<{ success: boolean; error?: string; data?: RugbyClockQuestion }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
 
   // If question_date is being updated, check for conflicts
   if (questionData.question_date) {
@@ -131,7 +131,7 @@ export async function updateRugbyClockQuestion(
 }
 
 export async function deleteRugbyClockQuestion(id: number): Promise<{ success: boolean; error?: string }> {
-  const supabase = createSupabaseServerAdminClient()
+  const supabase = await createSupabaseServerAdminClient()
   const { error } = await supabase.from("rugby_clock_questions").delete().eq("id", id)
 
   if (error) {
