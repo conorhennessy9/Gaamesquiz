@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu, X, Home, Mail, Info, FileText, Shield, ChevronRight } from "lucide-react"
+import { Menu, X, Home, Mail, Info, FileText, Shield, ChevronRight, LayoutDashboard } from "lucide-react"
 
 interface NavigationMenuProps {
   currentSection?: "rugby" | "gaa" | "home"
@@ -34,7 +34,7 @@ export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps)
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 left-0 h-full w-72 bg-[#0f0f0f] border-r border-white/[0.06] z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-dvh w-72 bg-[#0f0f0f] border-r border-white/[0.06] z-50 flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -84,6 +84,16 @@ export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps)
           <NavLink href="/terms" icon={<FileText className="w-4 h-4" />} label="Terms of Service" onClick={() => setIsOpen(false)} />
           <NavLink href="/privacy" icon={<Shield className="w-4 h-4" />} label="Privacy Policy" onClick={() => setIsOpen(false)} />
         </nav>
+
+        {/* Admin / CMS access — pinned above the footer */}
+        <div className="px-4 py-3 border-t border-white/[0.06]">
+          <NavLink
+            href="/cms"
+            icon={<LayoutDashboard className="w-4 h-4" />}
+            label="CMS"
+            onClick={() => setIsOpen(false)}
+          />
+        </div>
 
         {/* Footer tag */}
         <div className="px-6 py-5 border-t border-white/[0.06]">
