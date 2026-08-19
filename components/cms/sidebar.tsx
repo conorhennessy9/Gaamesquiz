@@ -12,7 +12,7 @@ import {
   LogOut,
   ChevronRight,
 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 const NAV = [
@@ -29,7 +29,7 @@ export default function CmsSidebar({ userEmail }: { userEmail: string }) {
   const router = useRouter()
 
   const handleSignOut = async () => {
-    const supabase = createClient()
+    const supabase = createSupabaseBrowserClient()
     await supabase.auth.signOut()
     router.push("/auth/login")
   }
