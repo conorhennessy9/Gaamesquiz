@@ -338,7 +338,7 @@ export default function QuestionsTable({
                   <TableRow key={q.id} className="border-zinc-800 hover:bg-zinc-900/50 group">
                     <TableCell className="max-w-[320px]">
                       <button
-                        onClick={() => router.push(`/admin/questions/${q.id}`)}
+                        onClick={() => router.push(`/admin/questions/${q.id}/edit`)}
                         className="text-left text-white text-sm line-clamp-2 hover:underline underline-offset-2"
                       >
                         {q.question_text}
@@ -385,7 +385,7 @@ export default function QuestionsTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-white">
                           <DropdownMenuItem
-                            onClick={() => router.push(`/admin/questions/${q.id}`)}
+                            onClick={() => router.push(`/admin/questions/${q.id}/edit`)}
                             className="focus:bg-zinc-800 focus:text-white cursor-pointer"
                           >
                             <Pencil className="h-3.5 w-3.5" />

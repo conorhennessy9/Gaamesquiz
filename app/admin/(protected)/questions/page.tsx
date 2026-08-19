@@ -1,7 +1,10 @@
 import { Suspense } from "react"
+import Link from "next/link"
+import { Plus } from "lucide-react"
 import { getQuestionLibrary, getDistinctCompetitions } from "@/lib/cms/questions-actions"
 import QuestionsTable from "./questions-table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 
 export const metadata = {
   title: "Questions | GAAmesquiz Admin",
@@ -37,6 +40,12 @@ export default async function AdminQuestionsPage({ searchParams }: PageProps) {
           <h1 className="text-white text-xl font-bold tracking-tight">Question Library</h1>
           <p className="text-zinc-500 text-sm mt-1">Search, filter, and manage all rugby and GAA quiz questions.</p>
         </div>
+        <Button asChild className="bg-lime-500 text-black hover:bg-lime-400 shrink-0">
+          <Link href="/admin/questions/new">
+            <Plus className="h-4 w-4" />
+            Add Question
+          </Link>
+        </Button>
       </div>
 
       <Suspense fallback={<QuestionsTableSkeleton />}>
