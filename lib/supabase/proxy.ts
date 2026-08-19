@@ -42,5 +42,26 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Protect all /admin routes (except the admin login page itself) —
+  // redirect to the admin login page if not authenticated
+  if (
+    request.nextUrl.pathname.startsWith("/admin") &&
+    request.nextUrl.pathname !== "/admin/login" &&
+    !user
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/admin/login"
+    url.searchParams.set("next", request.nextUrl.pathname)
+    return NextResponse.redirect(url)
+  }
+
+  // If already logged in and hitting the admin login page, redirect to the admin dashboard
+  if (request.nextUrl.pathname === "/admin/login" && user) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/admin/dashboard"
+    url.search = ""
+    return NextResponse.redirect(url)
+  }
+
   return supabaseResponse
 }
