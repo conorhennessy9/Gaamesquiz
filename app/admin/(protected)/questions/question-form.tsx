@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ComboboxField } from "@/components/admin/combobox-field"
 import { DatePickerField } from "@/components/admin/date-picker-field"
+import { AnswerPickerField } from "@/components/admin/answer-picker-field"
 import { createQuestion, updateQuestion } from "@/lib/cms/question-form-actions"
 import type { FormOptions, QuestionFormValues, SaveResult } from "@/lib/cms/question-form-types"
 
@@ -308,6 +309,22 @@ export default function QuestionForm({ mode, questionId, initialValues, formOpti
             </Field>
           </div>
         </Section>
+
+        {/* ANSWERS */}
+        {values.game_type === "tenable" && (
+          <Section title="Answers">
+            <Field label="Accepted answers">
+              <AnswerPickerField
+                value={values.answer_entries}
+                onChange={(v) => update("answer_entries", v)}
+                sport={values.sport}
+              />
+              <p className="text-xs text-zinc-500 mt-1.5">
+                Optional. Pick from the answer library or create new answers on the fly.
+              </p>
+            </Field>
+          </Section>
+        )}
 
         {/* REVIEW & VERIFICATION */}
         <Section title="Review & verification">

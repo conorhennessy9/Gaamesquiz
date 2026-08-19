@@ -4,12 +4,21 @@ import type { Sport, GameType } from "./types"
 // Kept out of question-form-actions.ts because "use server" files may only
 // export async functions — no consts, types, or interfaces.
 
+// A selected answer in the editor. `id` links back to an answer_library row
+// (used to bump usage_count on save); it is null for legacy free-text answers
+// that don't have a matching library entry.
+export interface AnswerEntry {
+  id: string | null
+  name: string
+}
+
 export interface QuestionFormValues {
   question_text: string
   sport: Sport | ""
   competition: string
   theme: string
   game_type: GameType | ""
+  answer_entries: AnswerEntry[]
   difficulty: "easy" | "medium" | "hard" | "expert" | ""
   evergreen_type: "true_evergreen" | "semi_evergreen" | "snapshot" | "live" | ""
   review_frequency: "never" | "annual" | "competition_end" | "monthly" | "manual" | ""
@@ -29,6 +38,7 @@ export const EMPTY_QUESTION_FORM: QuestionFormValues = {
   competition: "",
   theme: "",
   game_type: "",
+  answer_entries: [],
   difficulty: "",
   evergreen_type: "",
   review_frequency: "",

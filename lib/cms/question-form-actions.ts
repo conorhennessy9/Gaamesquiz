@@ -3,7 +3,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { QuizQuestion } from "./types"
-import type { QuestionFormValues, FormOptions, SaveResult } from "./question-form-types"
+import type { AnswerEntry, QuestionFormValues, FormOptions, SaveResult } from "./question-form-types"
+import { touchAnswerLibraryUsage } from "./answer-library-actions"
 
 // Server actions for the Add/Edit Question editor (/admin/questions/new and
 // /admin/questions/[id]/edit). Reads and writes the `quiz_questions` table
@@ -91,12 +92,38 @@ export async function getQuestionForEdit(
     scheduled_position?: number | null
   }
 
+  // Reconstruct answer_entries by matching stored answer names back to
+  // answer_library rows (case-insensitive). Names with no match are kept as
+  // unlinked free-text entries (id: null) so nothing is silently dropped.
+  const storedAnswers = Array.isArray(q.answers) ? q.answers : []
+  let answerEntries: AnswerEntry[] = storedAnswers.map((name) => ({ id: null, name }))
+
+  if (storedAnswers.length > 0) {
+    const { data: libraryMatches } = await supabase
+      .from("answer_library")
+      .select("id, name")
+      .in(
+        "name",
+        // Postgres `in` matches exact values; also try lowercased dedupe below.
+        storedAnswers,
+      )
+
+    if (libraryMatches && libraryMatches.length > 0) {
+      const byLowerName = new Map(libraryMatches.map((m: any) => [m.name.toLowerCase(), m.id as string]))
+      answerEntries = storedAnswers.map((name) => ({
+        id: byLowerName.get(name.toLowerCase()) ?? null,
+        name,
+      }))
+    }
+  }
+
   const formValues: QuestionFormValues = {
     question_text: q.question_text ?? "",
     sport: q.sport ?? "",
     competition: q.competition ?? "",
     theme: q.theme ?? "",
     game_type: q.game_type ?? "",
+    answer_entries: answerEntries,
     difficulty: (q.difficulty as any) ?? "",
     evergreen_type: (q.evergreen_type as any) ?? "",
     review_frequency: (q.review_frequency as any) ?? "",
@@ -131,6 +158,7 @@ function toRow(values: QuestionFormValues) {
     question_text: values.question_text.trim(),
     sport: values.sport,
     game_type: values.game_type,
+    answers: values.answer_entries.map((e) => e.name),
     competition: values.competition.trim() || null,
     theme: values.theme.trim() || null,
     difficulty: values.difficulty || null,
@@ -162,6 +190,9 @@ export async function createQuestion(values: QuestionFormValues): Promise<SaveRe
     return { success: false, error: error.message }
   }
 
+  const linkedAnswerIds = values.answer_entries.map((e) => e.id).filter((id): id is string => id !== null)
+  await touchAnswerLibraryUsage(linkedAnswerIds)
+
   revalidatePath("/admin/questions")
   return { success: true, id: data.id }
 }
@@ -178,6 +209,9 @@ export async function updateQuestion(id: number, values: QuestionFormValues): Pr
   if (error) {
     return { success: false, error: error.message }
   }
+
+  const linkedAnswerIds = values.answer_entries.map((e) => e.id).filter((id): id is string => id !== null)
+  await touchAnswerLibraryUsage(linkedAnswerIds)
 
   revalidatePath("/admin/questions")
   revalidatePath(`/admin/questions/${id}/edit`)
