@@ -19,9 +19,8 @@ import type { AnswerEntry } from "@/lib/cms/question-form-types"
 const TYPE_LABELS: Record<AnswerType, string> = {
   player: "Player",
   team: "Team",
+  competition: "Competition",
   venue: "Venue",
-  number: "Number",
-  date: "Date",
   other: "Other",
 }
 

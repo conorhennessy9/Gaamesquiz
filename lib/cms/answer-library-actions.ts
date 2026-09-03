@@ -12,7 +12,7 @@ import { revalidatePath } from "next/cache"
 // async functions. Shared types live inline below since there are no
 // non-function exports allowed.
 
-export type AnswerType = "player" | "team" | "venue" | "number" | "date" | "other"
+export type AnswerType = "player" | "team" | "competition" | "venue" | "other"
 export type AnswerSport = "rugby" | "gaa" | "both"
 
 export interface AnswerLibraryEntry {

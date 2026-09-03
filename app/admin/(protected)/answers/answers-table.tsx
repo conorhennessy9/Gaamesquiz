@@ -32,9 +32,8 @@ import {
 const TYPE_OPTIONS: { value: AnswerType; label: string }[] = [
   { value: "player", label: "Player" },
   { value: "team", label: "Team" },
+  { value: "competition", label: "Competition" },
   { value: "venue", label: "Venue" },
-  { value: "number", label: "Number" },
-  { value: "date", label: "Date" },
   { value: "other", label: "Other" },
 ]
 
