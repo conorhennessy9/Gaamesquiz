@@ -202,8 +202,8 @@ export default function AnswersTable({ initialEntries, count, page, pageSize, fi
               <TableHead className="text-zinc-400">Answer</TableHead>
               <TableHead className="text-zinc-400">Type</TableHead>
               <TableHead className="text-zinc-400">Sport</TableHead>
-              <TableHead className="text-zinc-400">Aliases</TableHead>
               <TableHead className="text-zinc-400">Times Used</TableHead>
+              <TableHead className="text-zinc-400">Aliases</TableHead>
               <TableHead className="text-zinc-400">Last Used</TableHead>
               <TableHead className="text-zinc-400">Active</TableHead>
               <TableHead className="text-zinc-400 text-right">Actions</TableHead>
@@ -222,6 +222,7 @@ export default function AnswersTable({ initialEntries, count, page, pageSize, fi
                   <TableCell className="text-white text-sm font-medium">{entry.name}</TableCell>
                   <TableCell className="text-zinc-300 text-sm capitalize">{entry.type}</TableCell>
                   <TableCell className="text-zinc-300 text-sm capitalize">{entry.sport}</TableCell>
+                  <TableCell className="text-zinc-300 text-sm">{entry.usage_count}</TableCell>
                   <TableCell className="max-w-[220px]">
                     {entry.aliases.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -235,7 +236,6 @@ export default function AnswersTable({ initialEntries, count, page, pageSize, fi
                       <span className="text-zinc-600">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-zinc-300 text-sm">{entry.usage_count}</TableCell>
                   <TableCell className="text-zinc-300 text-sm">{formatDate(entry.last_used_at)}</TableCell>
                   <TableCell>
                     <Switch
