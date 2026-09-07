@@ -158,7 +158,7 @@ function toRow(values: QuestionFormValues) {
     question_text: values.question_text.trim(),
     sport: values.sport,
     game_type: values.game_type,
-    answers: values.answer_entries.map((e) => e.name),
+    answers: values.answer_entries.map((e) => e.name.trim()).filter(Boolean),
     competition: values.competition.trim() || null,
     theme: values.theme.trim() || null,
     difficulty: values.difficulty || null,

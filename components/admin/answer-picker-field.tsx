@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, Loader2, Plus, X } from "lucide-react"
+import { Check, Loader2, Pencil, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -33,58 +33,79 @@ interface AnswerPickerFieldProps {
   disabled?: boolean
 }
 
+/**
+ * Renders one numbered slot per accepted answer ("Answer 1", "Answer 2", ...)
+ * plus a button to add another slot. Each slot is an independent search
+ * against the answer library — selecting a result only ever links that
+ * exact record (no fuzzy matching or merging of distinct answers).
+ */
 export function AnswerPickerField({ value, onChange, sport, disabled }: AnswerPickerFieldProps) {
+  function updateAt(index: number, entry: AnswerEntry) {
+    onChange(value.map((v, i) => (i === index ? entry : v)))
+  }
+
   function removeAt(index: number) {
     onChange(value.filter((_, i) => i !== index))
   }
 
-  function addEntry(entry: AnswerEntry) {
-    if (value.some((v) => v.name.toLowerCase() === entry.name.toLowerCase())) return
-    onChange([...value, entry])
+  function addSlot() {
+    onChange([...value, { id: null, name: "" }])
   }
 
   return (
     <div className="space-y-2">
-      {value.length > 0 && (
-        <ul className="flex flex-wrap gap-2">
-          {value.map((entry, index) => (
-            <li
-              key={`${entry.id ?? "free"}-${entry.name}-${index}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-sm text-white"
-            >
-              {entry.name}
-              {!entry.id && <span className="text-[10px] uppercase text-zinc-500">unlinked</span>}
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => removeAt(index)}
-                className="text-zinc-500 hover:text-white"
-                aria-label={`Remove ${entry.name}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {value.map((entry, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <span className="w-20 shrink-0 text-xs text-zinc-500">Answer {index + 1}</span>
+          <div className="flex-1">
+            <AnswerSlotSearch
+              value={entry}
+              onChange={(next) => updateAt(index, next)}
+              sport={sport}
+              disabled={disabled}
+            />
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => removeAt(index)}
+            className="text-zinc-500 hover:text-white shrink-0"
+            aria-label={`Remove answer ${index + 1}`}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
 
-      <AnswerAddButton disabled={disabled} sport={sport} onAdd={addEntry} />
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled}
+        onClick={addSlot}
+        className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+      >
+        <Plus className="h-4 w-4" />
+        Add answer slot
+      </Button>
     </div>
   )
 }
 
-function AnswerAddButton({
-  disabled,
+function AnswerSlotSearch({
+  value,
+  onChange,
   sport,
-  onAdd,
+  disabled,
 }: {
-  disabled?: boolean
+  value: AnswerEntry
+  onChange: (entry: AnswerEntry) => void
   sport: AnswerSport | ""
-  onAdd: (entry: AnswerEntry) => void
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [results, setResults] = useState<AnswerLibraryEntry[]>([])
+  const [resultTypes, setResultTypes] = useState<Map<string, AnswerType>>(new Map())
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newType, setNewType] = useState<AnswerType>("player")
@@ -97,6 +118,7 @@ function AnswerAddButton({
       setLoading(true)
       const data = await searchAnswerLibrary(search, sport || undefined)
       setResults(data)
+      setResultTypes(new Map(data.map((r) => [r.id, r.type])))
       setLoading(false)
     }, 250)
     return () => {
@@ -106,6 +128,7 @@ function AnswerAddButton({
 
   const trimmedSearch = search.trim()
   const exactMatch = results.some((r) => r.name.toLowerCase() === trimmedSearch.toLowerCase())
+  const isFilled = value.name.trim().length > 0
 
   async function handleCreate() {
     if (!trimmedSearch || creating) return
@@ -120,26 +143,52 @@ function AnswerAddButton({
     setCreating(false)
 
     if (result.success && result.id) {
-      onAdd({ id: result.id, name: trimmedSearch })
+      onChange({ id: result.id, name: trimmedSearch })
       setSearch("")
       setOpen(false)
     }
   }
 
+  if (isFilled && !open) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-white">
+        <span className="flex-1 truncate">{value.name}</span>
+        {!value.id && <span className="text-[10px] uppercase text-zinc-500">unlinked</span>}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setSearch(value.name)
+            setOpen(true)
+          }}
+          className="text-zinc-500 hover:text-white"
+          aria-label={`Change answer ${value.name}`}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setSearch("")
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
           variant="outline"
           disabled={disabled}
-          className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          className="w-full justify-start border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
         >
-          <Plus className="h-4 w-4" />
-          Add answer
+          Search the answer library...
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[320px] p-0 bg-zinc-900 border-zinc-800 text-white">
+      <PopoverContent className="w-[320px] p-0 bg-zinc-900 border-zinc-800 text-white" align="start">
         <Command shouldFilter={false} className="bg-zinc-900">
           <CommandInput
             value={search}
@@ -162,15 +211,17 @@ function AnswerAddButton({
                       key={entry.id}
                       value={entry.id}
                       onSelect={() => {
-                        onAdd({ id: entry.id, name: entry.name })
+                        onChange({ id: entry.id, name: entry.name })
                         setSearch("")
                         setOpen(false)
                       }}
                       className="focus:bg-zinc-800 focus:text-white"
                     >
-                      <Check className="h-4 w-4 opacity-0" />
+                      <Check className={cn("h-4 w-4", value.id === entry.id ? "opacity-100" : "opacity-0")} />
                       <span className="flex-1 truncate">{entry.name}</span>
-                      <span className="text-[10px] uppercase text-zinc-500">{TYPE_LABELS[entry.type]}</span>
+                      <span className="text-[10px] uppercase text-zinc-500">
+                        {TYPE_LABELS[resultTypes.get(entry.id) ?? entry.type]}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
