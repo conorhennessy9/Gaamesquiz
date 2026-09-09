@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useTransition } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { Search, X, Pencil, Plus, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Search, X, Pencil, Plus, ChevronLeft, ChevronRight, Loader2, Check } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -349,7 +349,7 @@ function AnswerDialog({
   const [name, setName] = useState(initial?.name ?? "")
   const [type, setType] = useState<AnswerType>(initial?.type ?? "player")
   const [sport, setSport] = useState<AnswerSport>(initial?.sport ?? "both")
-  const [aliasesInput, setAliasesInput] = useState((initial?.aliases ?? []).join(", "))
+  const [aliases, setAliases] = useState<string[]>(initial?.aliases ?? [])
   const [active, setActive] = useState(initial?.active ?? true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -362,7 +362,7 @@ function AnswerDialog({
     setName(initial?.name ?? "")
     setType(initial?.type ?? "player")
     setSport(initial?.sport ?? "both")
-    setAliasesInput((initial?.aliases ?? []).join(", "))
+    setAliases(initial?.aliases ?? [])
     setActive(initial?.active ?? true)
     setError(null)
   }
@@ -375,11 +375,6 @@ function AnswerDialog({
     }
     setSaving(true)
     setError(null)
-
-    const aliases = aliasesInput
-      .split(",")
-      .map((a) => a.trim())
-      .filter(Boolean)
 
     const result =
       state?.mode === "edit"
@@ -461,13 +456,10 @@ function AnswerDialog({
 
           <div className="space-y-1.5">
             <Label className="text-sm text-zinc-300">Aliases</Label>
-            <Input
-              value={aliasesInput}
-              onChange={(e) => setAliasesInput(e.target.value)}
-              placeholder="Comma-separated, e.g. BOD, O'Driscoll"
-              className="bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-500"
-            />
-            <p className="text-xs text-zinc-500">Alternate spellings that should also match this answer.</p>
+            <p className="text-xs text-zinc-500">
+              Alternate spellings that should also match this answer. Aliases belong only to this answer.
+            </p>
+            <AliasEditor aliases={aliases} onChange={setAliases} primaryName={name} disabled={saving} />
           </div>
 
           <div className="flex items-center justify-between rounded-md border border-zinc-800 px-3 py-2">
@@ -493,5 +485,209 @@ function AnswerDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Add / edit / remove individual aliases for a single answer. Aliases live
+ * only in this row's `aliases` array — there is no shared alias table — so
+ * they always belong specifically to this one answer.
+ */
+function AliasEditor({
+  aliases,
+  onChange,
+  primaryName,
+  disabled,
+}: {
+  aliases: string[]
+  onChange: (aliases: string[]) => void
+  primaryName: string
+  disabled?: boolean
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [addingNew, setAddingNew] = useState(false)
+  const [draft, setDraft] = useState("")
+  const [fieldError, setFieldError] = useState<string | null>(null)
+
+  function startEdit(index: number) {
+    setEditingIndex(index)
+    setAddingNew(false)
+    setDraft(aliases[index])
+    setFieldError(null)
+  }
+
+  function startAdd() {
+    setAddingNew(true)
+    setEditingIndex(null)
+    setDraft("")
+    setFieldError(null)
+  }
+
+  function cancel() {
+    setEditingIndex(null)
+    setAddingNew(false)
+    setDraft("")
+    setFieldError(null)
+  }
+
+  function validate(value: string, ignoreIndex: number | null): string | null {
+    const trimmed = value.trim()
+    if (!trimmed) return "Alias cannot be empty."
+    if (trimmed.toLowerCase() === primaryName.trim().toLowerCase()) {
+      return "Alias cannot match the primary answer name."
+    }
+    const isDuplicate = aliases.some((a, i) => i !== ignoreIndex && a.toLowerCase() === trimmed.toLowerCase())
+    if (isDuplicate) return "This alias already exists for this answer."
+    return null
+  }
+
+  function commitEdit() {
+    if (editingIndex === null) return
+    const err = validate(draft, editingIndex)
+    if (err) {
+      setFieldError(err)
+      return
+    }
+    onChange(aliases.map((a, i) => (i === editingIndex ? draft.trim() : a)))
+    cancel()
+  }
+
+  function commitAdd() {
+    const err = validate(draft, null)
+    if (err) {
+      setFieldError(err)
+      return
+    }
+    onChange([...aliases, draft.trim()])
+    cancel()
+  }
+
+  function removeAt(index: number) {
+    onChange(aliases.filter((_, i) => i !== index))
+    if (editingIndex === index) cancel()
+  }
+
+  return (
+    <div className="space-y-2">
+      {aliases.length === 0 && !addingNew && <p className="text-xs text-zinc-600">No aliases yet.</p>}
+
+      <div className="space-y-1.5">
+        {aliases.map((alias, index) =>
+          editingIndex === index ? (
+            <div key={index} className="flex items-center gap-1.5">
+              <Input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    commitEdit()
+                  } else if (e.key === "Escape") {
+                    cancel()
+                  }
+                }}
+                className="h-8 bg-zinc-950 border-zinc-800 text-white text-sm"
+              />
+              <button
+                type="button"
+                onClick={commitEdit}
+                className="text-lime-400 hover:text-lime-300 shrink-0"
+                aria-label="Save alias"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={cancel}
+                className="text-zinc-500 hover:text-white shrink-0"
+                aria-label="Cancel editing alias"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div
+              key={index}
+              className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5"
+            >
+              <span className="text-sm text-zinc-200 truncate">{alias}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => startEdit(index)}
+                  className="text-zinc-500 hover:text-white"
+                  aria-label={`Edit alias ${alias}`}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => removeAt(index)}
+                  className="text-zinc-500 hover:text-red-400"
+                  aria-label={`Remove alias ${alias}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+
+        {addingNew && (
+          <div className="flex items-center gap-1.5">
+            <Input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="e.g. Menoncello"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  commitAdd()
+                } else if (e.key === "Escape") {
+                  cancel()
+                }
+              }}
+              className="h-8 bg-zinc-950 border-zinc-800 text-white text-sm"
+            />
+            <button
+              type="button"
+              onClick={commitAdd}
+              className="text-lime-400 hover:text-lime-300 shrink-0"
+              aria-label="Save new alias"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={cancel}
+              className="text-zinc-500 hover:text-white shrink-0"
+              aria-label="Cancel new alias"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {fieldError && <p className="text-xs text-red-400">{fieldError}</p>}
+
+      {!addingNew && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={startAdd}
+          className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add alias
+        </Button>
+      )}
+    </div>
   )
 }
