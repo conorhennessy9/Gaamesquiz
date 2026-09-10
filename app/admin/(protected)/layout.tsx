@@ -32,6 +32,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
             <Link href="/admin/answers" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Answers
             </Link>
+            <Link href="/admin/import" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Import
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-4">

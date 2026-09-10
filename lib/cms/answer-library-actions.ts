@@ -92,8 +92,6 @@ export async function createAnswerLibraryEntry(input: AnswerLibraryInput): Promi
   }
 
   const supabase = await createClient()
-  const { data: authData } = await supabase.auth.getUser()
-  console.log("[v0] createAnswerLibraryEntry auth user:", authData?.user?.id, authData?.user?.role)
   const { data, error } = await supabase
     .from("answer_library")
     .insert({
@@ -105,8 +103,6 @@ export async function createAnswerLibraryEntry(input: AnswerLibraryInput): Promi
     })
     .select("id")
     .single()
-
-  console.log("[v0] createAnswerLibraryEntry result:", { data, error })
 
   if (error) {
     if (error.code === "23505") {
