@@ -5,11 +5,17 @@
 import * as XLSX from "xlsx"
 import {
   ANSWER_COLUMNS,
+  DIFFICULTY_VALUES,
+  GAME_TYPE_VALUES,
   IMPORT_COLUMNS,
   REQUIRED_IMPORT_COLUMNS,
+  SPORT_VALUES,
   type ColumnMapping,
   type ImportColumn,
+  type ImportIssue,
+  type ImportIssueCode,
   type ImportParseResult,
+  type ImportSummary,
   type ParsedImportRow,
 } from "./import-types"
 
@@ -114,6 +120,10 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
   const rows: ParsedImportRow[] = []
   let skippedBlankRowCount = 0
 
+  // Tracks the first row number each normalized question text was seen at,
+  // so every later occurrence can be flagged as a duplicate.
+  const firstSeenAtByQuestion = new Map<string, number>()
+
   dataRows.forEach((rawRow, i) => {
     const values: Partial<Record<ImportColumn, string>> = {}
     let hasAnyValue = false
@@ -133,17 +143,11 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
       return
     }
 
-    const issues: string[] = []
-    if (!values.question) {
-      issues.push("Missing question text.")
-    }
-    const hasAnswer = ANSWER_COLUMNS.some((c) => Boolean(values[c]))
-    if (!hasAnswer) {
-      issues.push("No answers provided (answer_1 - answer_10 all empty).")
-    }
+    const rowNumber = i + 1
+    const issues = validateRow(values, rowNumber, firstSeenAtByQuestion)
 
     rows.push({
-      rowNumber: i + 1,
+      rowNumber,
       values,
       issues,
     })
@@ -158,5 +162,79 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
     missingRequiredColumns,
     rows,
     skippedBlankRowCount,
+    summary: summarizeRows(rows),
+  }
+}
+
+function normalizeQuestionText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+/** Validates a single row's values, recording the first occurrence of its
+ * question text so later duplicates can be detected as rows are processed. */
+function validateRow(
+  values: Partial<Record<ImportColumn, string>>,
+  rowNumber: number,
+  firstSeenAtByQuestion: Map<string, number>,
+): ImportIssue[] {
+  const issues: ImportIssue[] = []
+
+  if (!values.question) {
+    issues.push({ code: "missing_question", message: "Missing question text." })
+  } else {
+    const normalized = normalizeQuestionText(values.question)
+    const firstRow = firstSeenAtByQuestion.get(normalized)
+    if (firstRow !== undefined) {
+      issues.push({ code: "duplicate_question", message: `Duplicate of row ${firstRow}'s question text.` })
+    } else {
+      firstSeenAtByQuestion.set(normalized, rowNumber)
+    }
+  }
+
+  const hasAnswer = ANSWER_COLUMNS.some((c) => Boolean(values[c]))
+  if (!hasAnswer) {
+    issues.push({ code: "missing_answers", message: "No answers provided (answer_1 - answer_10 all empty)." })
+  }
+
+  if (!values.sport) {
+    issues.push({ code: "missing_sport", message: "Missing sport." })
+  } else if (!SPORT_VALUES.includes(values.sport.toLowerCase() as (typeof SPORT_VALUES)[number])) {
+    issues.push({ code: "invalid_sport", message: `Sport must be one of: ${SPORT_VALUES.join(", ")}.` })
+  }
+
+  if (!values.game_type) {
+    issues.push({ code: "missing_game_type", message: "Missing game type." })
+  } else if (!GAME_TYPE_VALUES.includes(values.game_type.toLowerCase() as (typeof GAME_TYPE_VALUES)[number])) {
+    issues.push({ code: "invalid_game_type", message: `Game type must be one of: ${GAME_TYPE_VALUES.join(", ")}.` })
+  }
+
+  if (!values.difficulty) {
+    issues.push({ code: "missing_difficulty", message: "Missing difficulty." })
+  } else if (!DIFFICULTY_VALUES.includes(values.difficulty.toLowerCase() as (typeof DIFFICULTY_VALUES)[number])) {
+    issues.push({ code: "invalid_difficulty", message: `Difficulty must be one of: ${DIFFICULTY_VALUES.join(", ")}.` })
+  }
+
+  return issues
+}
+
+function summarizeRows(rows: ParsedImportRow[]): ImportSummary {
+  const issueCounts: Partial<Record<ImportIssueCode, number>> = {}
+  let valid = 0
+
+  for (const row of rows) {
+    if (row.issues.length === 0) {
+      valid += 1
+      continue
+    }
+    for (const issue of row.issues) {
+      issueCounts[issue.code] = (issueCounts[issue.code] ?? 0) + 1
+    }
+  }
+
+  return {
+    totalDetected: rows.length,
+    valid,
+    invalid: rows.length - valid,
+    issueCounts,
   }
 }

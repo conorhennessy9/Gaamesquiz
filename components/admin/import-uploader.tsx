@@ -1,14 +1,21 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import { UploadCloud, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react"
+import { UploadCloud, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Loader2, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { parseImportFile } from "@/lib/cms/import-parser"
-import { ANSWER_COLUMNS, IMPORT_COLUMNS, type ImportParseResult } from "@/lib/cms/import-types"
+import { importValidQuestions, type ImportRunResult } from "@/lib/cms/import-actions"
+import {
+  ANSWER_COLUMNS,
+  IMPORT_COLUMNS,
+  ISSUE_LABELS,
+  type ImportIssueCode,
+  type ImportParseResult,
+} from "@/lib/cms/import-types"
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx"]
 const PREVIEW_ROW_LIMIT = 25
@@ -18,6 +25,8 @@ export default function ImportUploader() {
   const [parsing, setParsing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportRunResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback(async (file: File) => {
@@ -31,6 +40,7 @@ export default function ImportUploader() {
     setParsing(true)
     setError(null)
     setResult(null)
+    setImportResult(null)
 
     try {
       const parsed = await parseImportFile(file)
@@ -55,7 +65,27 @@ export default function ImportUploader() {
     if (file) handleFile(file)
   }
 
+  function reset() {
+    setResult(null)
+    setError(null)
+    setImportResult(null)
+  }
+
+  async function handleImport() {
+    if (!result) return
+    setImporting(true)
+    try {
+      const outcome = await importValidQuestions(result.rows)
+      setImportResult(outcome)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const rowsWithIssues = result?.rows.filter((r) => r.issues.length > 0).length ?? 0
+  const canImport = Boolean(
+    result && !importResult && result.missingRequiredColumns.length === 0 && result.summary.valid > 0,
+  )
 
   return (
     <div className="space-y-6">
