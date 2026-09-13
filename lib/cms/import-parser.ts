@@ -8,6 +8,7 @@ import {
   DIFFICULTY_VALUES,
   GAME_TYPE_VALUES,
   IMPORT_COLUMNS,
+  normalizeQuestionText,
   REQUIRED_IMPORT_COLUMNS,
   SPORT_VALUES,
   type ColumnMapping,
@@ -166,10 +167,6 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
   }
 }
 
-function normalizeQuestionText(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, " ")
-}
-
 /** Validates a single row's values, recording the first occurrence of its
  * question text so later duplicates can be detected as rows are processed. */
 function validateRow(
@@ -217,7 +214,44 @@ function validateRow(
   return issues
 }
 
-function summarizeRows(rows: ParsedImportRow[]): ImportSummary {
+/**
+ * Merges the results of a database duplicate-check (a set of normalized
+ * question texts that already exist in `quiz_questions`) into an already
+ * parsed result, flagging any matching row with a `duplicate_existing`
+ * issue and recomputing the summary. Pure function — takes the existing
+ * result and the check outcome, returns a new result; never touches the
+ * database itself.
+ */
+export function applyExistingDuplicateCheck(
+  result: ImportParseResult,
+  existingNormalizedQuestions: string[],
+): ImportParseResult {
+  const existingSet = new Set(existingNormalizedQuestions)
+  if (existingSet.size === 0) return result
+
+  const rows = result.rows.map((row) => {
+    if (!row.values.question) return row
+    if (row.issues.some((i) => i.code === "duplicate_existing")) return row
+
+    const normalized = normalizeQuestionText(row.values.question)
+    if (!existingSet.has(normalized)) return row
+
+    return {
+      ...row,
+      issues: [
+        ...row.issues,
+        {
+          code: "duplicate_existing" as const,
+          message: "This question already exists in the question library.",
+        },
+      ],
+    }
+  })
+
+  return { ...result, rows, summary: summarizeRows(rows) }
+}
+
+export function summarizeRows(rows: ParsedImportRow[]): ImportSummary {
   const issueCounts: Partial<Record<ImportIssueCode, number>> = {}
   let valid = 0
 

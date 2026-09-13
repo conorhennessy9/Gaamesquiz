@@ -61,6 +61,7 @@ export type ImportIssueCode =
   | "missing_question"
   | "missing_answers"
   | "duplicate_question"
+  | "duplicate_existing"
   | "missing_sport"
   | "invalid_sport"
   | "missing_game_type"
@@ -78,6 +79,7 @@ export const ISSUE_LABELS: Record<ImportIssueCode, { singular: string; plural: s
   missing_question: { singular: "missing question", plural: "missing question" },
   missing_answers: { singular: "missing answer", plural: "missing answer" },
   duplicate_question: { singular: "duplicate", plural: "duplicate" },
+  duplicate_existing: { singular: "duplicate", plural: "duplicate" },
   missing_sport: { singular: "missing sport", plural: "missing sport" },
   invalid_sport: { singular: "invalid sport", plural: "invalid sport" },
   missing_game_type: { singular: "missing game type", plural: "missing game type" },
@@ -121,4 +123,13 @@ export interface ImportParseResult {
 export interface ImportParseError {
   fileName: string
   message: string
+}
+
+/** Normalizes question text for duplicate comparison, both within a file
+ * and against what's already in the database: trim, lowercase, collapse
+ * internal whitespace. Shared by the client-side parser and the server
+ * action that commits the import, so both sides agree on what counts as
+ * "the same question". */
+export function normalizeQuestionText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ")
 }

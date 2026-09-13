@@ -1,19 +1,19 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import { UploadCloud, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Loader2, RotateCcw } from "lucide-react"
+import { UploadCloud, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseImportFile } from "@/lib/cms/import-parser"
-import { importValidQuestions, type ImportRunResult } from "@/lib/cms/import-actions"
+import { applyExistingDuplicateCheck, parseImportFile } from "@/lib/cms/import-parser"
+import { findExistingQuestionTexts, importValidQuestions, type ImportRunResult } from "@/lib/cms/import-actions"
 import {
   ANSWER_COLUMNS,
   IMPORT_COLUMNS,
   ISSUE_LABELS,
-  type ImportIssueCode,
+  normalizeQuestionText,
   type ImportParseResult,
 } from "@/lib/cms/import-types"
 
@@ -44,7 +44,21 @@ export default function ImportUploader() {
 
     try {
       const parsed = await parseImportFile(file)
-      setResult(parsed)
+
+      // Cross-check every candidate question against what's already in the
+      // question library, so existing-duplicate rows are flagged in the
+      // preview (and excluded from the valid count) before import even runs.
+      const questionTexts = Array.from(
+        new Set(
+          parsed.rows
+            .filter((r) => r.values.question)
+            .map((r) => normalizeQuestionText(r.values.question!)),
+        ),
+      )
+      const existing = questionTexts.length > 0 ? await findExistingQuestionTexts(questionTexts) : []
+      const checked = applyExistingDuplicateCheck(parsed, existing)
+
+      setResult(checked)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to parse the file.")
     } finally {
@@ -160,15 +174,15 @@ export default function ImportUploader() {
             </Alert>
           )}
 
-          {rowsWithIssues > 0 && result.missingRequiredColumns.length === 0 && (
-            <Alert className="border-amber-900/50 bg-amber-950/20 text-amber-200">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{rowsWithIssues} row{rowsWithIssues === 1 ? "" : "s"} with issues</AlertTitle>
-              <AlertDescription className="text-amber-300/80">
-                These rows are missing a question or all answers. They&apos;re flagged in the preview below.
-              </AlertDescription>
-            </Alert>
+          {!importResult && (
+            <SummaryLine
+              totalDetected={result.summary.totalDetected}
+              valid={result.summary.valid}
+              issueCounts={result.summary.issueCounts}
+            />
           )}
+
+          {importResult && <ImportReport importResult={importResult} />}
 
           <div className="space-y-2">
             <h3 className="text-sm font-medium text-white">Column recognition</h3>
@@ -262,9 +276,11 @@ export default function ImportUploader() {
                               <Badge
                                 variant="outline"
                                 className="border-amber-800/60 bg-amber-950/30 text-amber-300 gap-1 whitespace-nowrap"
+                                title={row.issues.map((i) => i.message).join(" · ")}
                               >
                                 <AlertTriangle className="h-3 w-3" />
-                                {row.issues[0]}
+                                {row.issues[0].message}
+                                {row.issues.length > 1 ? ` (+${row.issues.length - 1})` : ""}
                               </Badge>
                             ) : (
                               <Badge
@@ -285,16 +301,147 @@ export default function ImportUploader() {
             </ScrollArea>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+          <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-zinc-500">
-              Importing into the question library isn&apos;t available yet — this step only parses and previews the
-              file.
+              {importResult
+                ? "Import finished. Only valid, non-duplicate rows were written to the question library."
+                : `${result.summary.valid} of ${result.summary.totalDetected} row${result.summary.totalDetected === 1 ? "" : "s"} will be imported as drafts. Invalid or duplicate rows are skipped automatically.`}
             </p>
-            <Button disabled className="bg-zinc-800 text-zinc-500 cursor-not-allowed">
-              Import {result.rows.length} question{result.rows.length === 1 ? "" : "s"}
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={reset}
+                disabled={importing}
+                className="border-zinc-700 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              >
+                Cancel
+              </Button>
+              {!importResult && (
+                <Button
+                  onClick={handleImport}
+                  disabled={!canImport || importing}
+                  className="bg-lime-500 text-zinc-950 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500"
+                >
+                  {importing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    `Import ${result.summary.valid} Valid Question${result.summary.valid === 1 ? "" : "s"}`
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+function SummaryLine({
+  totalDetected,
+  valid,
+  issueCounts,
+}: {
+  totalDetected: number
+  valid: number
+  issueCounts: ImportParseResult["summary"]["issueCounts"]
+}) {
+  const parts: string[] = [`${totalDetected} question${totalDetected === 1 ? "" : "s"} detected`, `${valid} valid`]
+
+  for (const [code, count] of Object.entries(issueCounts)) {
+    if (!count) continue
+    const label = ISSUE_LABELS[code as keyof typeof ISSUE_LABELS]
+    parts.push(`${count} ${count === 1 ? label.singular : label.plural}`)
+  }
+
+  const hasIssues = totalDetected - valid > 0
+
+  return (
+    <Alert
+      className={
+        hasIssues
+          ? "border-amber-900/50 bg-amber-950/20 text-amber-200"
+          : "border-lime-900/50 bg-lime-950/20 text-lime-200"
+      }
+    >
+      {hasIssues ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+      <AlertTitle>{parts.join(" · ")}</AlertTitle>
+      <AlertDescription className={hasIssues ? "text-amber-300/80" : "text-lime-300/80"}>
+        Invalid and duplicate rows are shown below and will be skipped — nothing invalid reaches the database.
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function ImportReport({ importResult }: { importResult: ImportRunResult }) {
+  return (
+    <div className="space-y-3">
+      <Alert
+        className={
+          importResult.fatalError
+            ? "border-red-900/50 bg-red-950/30 text-red-200"
+            : "border-lime-900/50 bg-lime-950/20 text-lime-200"
+        }
+      >
+        {importResult.fatalError ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+        <AlertTitle>
+          {importResult.importedCount} imported · {importResult.skippedCount} skipped · {importResult.errorCount}{" "}
+          error{importResult.errorCount === 1 ? "" : "s"}
+        </AlertTitle>
+        {importResult.fatalError && (
+          <AlertDescription className="text-red-300/80">{importResult.fatalError}</AlertDescription>
+        )}
+      </Alert>
+
+      {(importResult.skipped.length > 0 || importResult.errors.length > 0) && (
+        <ScrollArea className="w-full rounded-lg border border-zinc-800">
+          <div className="max-h-[320px] overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-zinc-950">
+                <TableRow className="border-zinc-800">
+                  <TableHead className="text-zinc-400 whitespace-nowrap">Row</TableHead>
+                  <TableHead className="text-zinc-400 whitespace-nowrap">Question</TableHead>
+                  <TableHead className="text-zinc-400 whitespace-nowrap">Result</TableHead>
+                  <TableHead className="text-zinc-400 whitespace-nowrap">Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {importResult.errors.map((row) => (
+                  <TableRow key={`error-${row.rowNumber}`} className="border-zinc-800">
+                    <TableCell className="text-zinc-500 text-xs">{row.rowNumber}</TableCell>
+                    <TableCell className="text-zinc-200 text-sm max-w-[280px] truncate">{row.question}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="border-red-800/60 bg-red-950/30 text-red-300 gap-1">
+                        <XCircle className="h-3 w-3" />
+                        Error
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-zinc-400 text-sm">{row.message}</TableCell>
+                  </TableRow>
+                ))}
+                {importResult.skipped.map((row) => (
+                  <TableRow key={`skipped-${row.rowNumber}`} className="border-zinc-800">
+                    <TableCell className="text-zinc-500 text-xs">{row.rowNumber}</TableCell>
+                    <TableCell className="text-zinc-200 text-sm max-w-[280px] truncate">{row.question}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className="border-amber-800/60 bg-amber-950/30 text-amber-300 gap-1 whitespace-nowrap"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Skipped
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-zinc-400 text-sm">{row.reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </ScrollArea>
       )}
     </div>
   )
