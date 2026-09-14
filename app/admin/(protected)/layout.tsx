@@ -29,6 +29,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
             <Link href="/admin/questions" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Questions
             </Link>
+            <Link href="/admin/schedule" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Schedule
+            </Link>
             <Link href="/admin/answers" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Answers
             </Link>
