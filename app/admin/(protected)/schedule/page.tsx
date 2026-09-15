@@ -1,4 +1,4 @@
-import { getScheduleCandidates, getScheduleFilterOptions } from "@/lib/cms/schedule-actions"
+import { getScheduleCandidates, getScheduleFilterOptions, getScheduledRunningOrder } from "@/lib/cms/schedule-actions"
 import type { ScheduleFilters } from "@/lib/cms/schedule-types"
 import ScheduleTable from "./schedule-table"
 
@@ -35,9 +35,10 @@ export default async function SchedulePage({
     page: first(params.page) ? Number(first(params.page)) : 1,
   }
 
-  const [result, filterOptions] = await Promise.all([
+  const [result, filterOptions, runningOrder] = await Promise.all([
     getScheduleCandidates(filters),
     getScheduleFilterOptions(),
+    getScheduledRunningOrder(filters.date),
   ])
 
   return (
@@ -56,6 +57,7 @@ export default async function SchedulePage({
         pageSize={result.pageSize}
         filterOptions={filterOptions}
         filters={filters}
+        runningOrder={runningOrder}
       />
     </div>
   )

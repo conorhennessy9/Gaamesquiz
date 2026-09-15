@@ -35,10 +35,19 @@ export interface ScheduleCandidate {
   cooldown_years: number | null
   last_used_at: string | null
   question_date: string | null
+  scheduled_position: number | null
   monthly_category: string | null
   status: string
   eligibility: ScheduleEligibility
   cooldownUntil: string | null
+}
+
+export interface ScheduledRunningOrderItem {
+  id: number
+  question_text: string
+  sport: string
+  game_type: string
+  scheduled_position: number
 }
 
 export interface ScheduleFilterOptions {

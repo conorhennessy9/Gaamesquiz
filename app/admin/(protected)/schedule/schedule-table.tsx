@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useTransition } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { X, ChevronLeft, ChevronRight, CalendarClock, CalendarX2 } from "lucide-react"
+import { X, ChevronLeft, ChevronRight, CalendarClock, CalendarX2, ArrowUp, ArrowDown, ListOrdered } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,8 +34,10 @@ import {
   type ScheduleCandidate,
   type ScheduleFilterOptions,
   type ScheduleFilters,
+  type ScheduledRunningOrderItem,
 } from "@/lib/cms/schedule-types"
-import { scheduleQuestion, unscheduleQuestion } from "@/lib/cms/schedule-actions"
+import { APPROVED_STATUS } from "@/lib/cms/schedule-cooldown"
+import { scheduleQuestion, unscheduleQuestion, moveScheduledPosition } from "@/lib/cms/schedule-actions"
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "—"
@@ -57,6 +59,7 @@ interface ScheduleTableProps {
   pageSize: number
   filterOptions: ScheduleFilterOptions
   filters: ScheduleFilters
+  runningOrder: ScheduledRunningOrderItem[]
 }
 
 export default function ScheduleTable({
@@ -66,6 +69,7 @@ export default function ScheduleTable({
   pageSize,
   filterOptions,
   filters,
+  runningOrder,
 }: ScheduleTableProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -73,6 +77,7 @@ export default function ScheduleTable({
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingActionId, setPendingActionId] = useState<number | null>(null)
+  const [pendingMoveId, setPendingMoveId] = useState<number | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(count / pageSize))
 
@@ -142,6 +147,30 @@ export default function ScheduleTable({
     startTransition(() => {
       router.refresh()
     })
+  }
+
+  async function handleMove(id: number, direction: "up" | "down") {
+    setActionError(null)
+    setPendingMoveId(id)
+    const result = await moveScheduledPosition(filters.date, id, direction)
+    setPendingMoveId(null)
+    if (!result.success) {
+      setActionError(result.error ?? "Failed to reorder question")
+      return
+    }
+    startTransition(() => {
+      router.refresh()
+    })
+  }
+
+  function eligibilityHint(c: ScheduleCandidate): string | undefined {
+    if (c.eligibility === "not_schedulable_status") {
+      return `Only "${statusLabel(APPROVED_STATUS)}" (approved) questions can be scheduled — this one is "${statusLabel(c.status)}".`
+    }
+    if (c.eligibility === "cooldown" && c.cooldownUntil) {
+      return `In cooldown until ${formatDate(c.cooldownUntil)}.`
+    }
+    return undefined
   }
 
   const rangeStart = count === 0 ? 0 : (page - 1) * pageSize + 1
@@ -248,6 +277,57 @@ export default function ScheduleTable({
         </div>
       )}
 
+      {/* Running order for the selected date */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <ListOrdered className="h-4 w-4 text-zinc-500" />
+          <h2 className="text-sm font-medium text-white">Running order for {formatDate(filters.date)}</h2>
+          <span className="text-xs text-zinc-500">
+            {runningOrder.length} question{runningOrder.length === 1 ? "" : "s"} scheduled
+          </span>
+        </div>
+        {runningOrder.length === 0 ? (
+          <p className="text-xs text-zinc-500">No questions scheduled for this date yet.</p>
+        ) : (
+          <ol className="space-y-1.5">
+            {runningOrder.map((item, index) => (
+              <li
+                key={item.id}
+                className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs font-medium text-zinc-300">
+                  {item.scheduled_position}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{item.question_text}</span>
+                <span className="text-xs text-zinc-500 capitalize shrink-0">{item.sport}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-30"
+                    disabled={index === 0 || pendingMoveId === item.id}
+                    onClick={() => handleMove(item.id, "up")}
+                    aria-label={`Move "${item.question_text}" earlier in the running order`}
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-30"
+                    disabled={index === runningOrder.length - 1 || pendingMoveId === item.id}
+                    onClick={() => handleMove(item.id, "down")}
+                    aria-label={`Move "${item.question_text}" later in the running order`}
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
       {/* Table */}
       <div className={`rounded-lg border border-zinc-800 overflow-hidden transition-opacity ${isPending ? "opacity-60" : ""}`}>
         <Table>
@@ -263,6 +343,7 @@ export default function ScheduleTable({
               <TableHead className="text-zinc-400">Cooldown</TableHead>
               <TableHead className="text-zinc-400">Previous Usage</TableHead>
               <TableHead className="text-zinc-400">Scheduled Date</TableHead>
+              <TableHead className="text-zinc-400">Position</TableHead>
               <TableHead className="text-zinc-400">Category</TableHead>
               <TableHead className="text-zinc-400">Status</TableHead>
               <TableHead className="text-zinc-400">Eligibility</TableHead>
@@ -272,7 +353,7 @@ export default function ScheduleTable({
           <TableBody>
             {initialData.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={14} className="text-center text-zinc-500 py-12">
+                <TableCell colSpan={15} className="text-center text-zinc-500 py-12">
                   No questions match your filters.
                 </TableCell>
               </TableRow>
@@ -317,6 +398,9 @@ export default function ScheduleTable({
                   </TableCell>
                   <TableCell className="text-zinc-300 text-sm">{formatDate(c.question_date)}</TableCell>
                   <TableCell className="text-zinc-300 text-sm">
+                    {c.scheduled_position ?? <span className="text-zinc-600">—</span>}
+                  </TableCell>
+                  <TableCell className="text-zinc-300 text-sm">
                     {c.monthly_category ?? <span className="text-zinc-600">—</span>}
                   </TableCell>
                   <TableCell>
@@ -347,6 +431,7 @@ export default function ScheduleTable({
                           c.eligibility === "cooldown" ||
                           c.eligibility === "not_schedulable_status"
                         }
+                        title={eligibilityHint(c)}
                         onClick={() => handleSchedule(c.id)}
                         className="bg-lime-500 text-black hover:bg-lime-400 disabled:opacity-40"
                       >
