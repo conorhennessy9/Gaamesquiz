@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { NavigationMenu } from "@/components/navigation-menu"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import type { RugbyTenaBallQuestion, GameStats, DailyGameProgress } from "./types"
+import { mapQuizQuestionToRugbyTenaBall, type QuizQuestionRow } from "./quiz-questions-adapter"
 import { getCurrentGMTDateString, formatDisplayDate, parseDateStringToGMT } from "@/lib/date-utils"
 import { RevealPopup } from "@/components/reveal-popup"
 import { findBestMatch } from "@/lib/answer-utils"
@@ -85,17 +86,26 @@ export default function RugbyTenablePage() {
         setTodaysQuestion(null) // Clear previous question
       })
 
+      // Rugby TenaBall is served from the shared quiz_questions CMS table:
+      // rugby + tenable + published, for the current GMT date. When more
+      // than one published question exists for the same date, prefer the
+      // one with the lowest scheduled_position.
       const { data, error } = await supabase
-        .from("rugby_tenaball_questions")
+        .from("quiz_questions")
         .select("*")
+        .eq("sport", "rugby")
+        .eq("game_type", "tenable")
+        .eq("published", true)
         .eq("question_date", dateStr)
-        .maybeSingle()
+        .order("scheduled_position", { ascending: true, nullsFirst: false })
+        .limit(1)
 
       startTransition(() => {
+        const question = data?.[0] as QuizQuestionRow | undefined
         if (error) {
           setQuestionError(`Failed to load question for ${formatDisplayDate(dateStr)}. ${error.message}`)
           setTodaysQuestion(null)
-        } else if (!data) {
+        } else if (!question) {
           setQuestionError(
             `No question available for ${formatDisplayDate(
               dateStr,
@@ -103,7 +113,7 @@ export default function RugbyTenablePage() {
           )
           setTodaysQuestion(null)
         } else {
-          setTodaysQuestion(data as RugbyTenaBallQuestion)
+          setTodaysQuestion(mapQuizQuestionToRugbyTenaBall(question))
           setQuestionError(null)
         }
         setIsLoadingQuestion(false)
