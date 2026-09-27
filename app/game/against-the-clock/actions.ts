@@ -2,6 +2,7 @@
 
 import { createSupabaseServerAdminClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { mapQuizQuestionToRugbyClock, type QuizQuestionRow } from "./quiz-questions-adapter"
 
 export interface RugbyClockQuestion {
   id: number
@@ -26,20 +27,31 @@ export async function getRugbyClockQuestions(): Promise<RugbyClockQuestion[]> {
   return data.map((q) => ({ ...q, question_date: q.question_date as string })) as RugbyClockQuestion[]
 }
 
+// Rugby Against The Clock gameplay is served from the shared quiz_questions
+// CMS table: rugby + against_the_clock + published, for the requested date.
+// When more than one published question exists for the same date, prefer
+// the one with the lowest scheduled_position. The legacy
+// rugby_clock_questions table (read/written above and by the admin screen)
+// is left untouched.
 export async function getRugbyClockQuestionByDate(date: string): Promise<RugbyClockQuestion | null> {
   const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
-    .from("rugby_clock_questions")
+    .from("quiz_questions")
     .select("*")
+    .eq("sport", "rugby")
+    .eq("game_type", "against_the_clock")
+    .eq("published", true)
     .eq("question_date", date)
-    .maybeSingle()
+    .order("scheduled_position", { ascending: true, nullsFirst: false })
+    .limit(1)
 
   if (error) {
     console.error(`Error fetching Rugby clock question for date ${date}:`, error)
     return null
   }
-  if (!data) return null
-  return { ...data, question_date: data.question_date as string } as RugbyClockQuestion
+  const question = data?.[0] as QuizQuestionRow | undefined
+  if (!question) return null
+  return mapQuizQuestionToRugbyClock(question)
 }
 
 export async function createRugbyClockQuestion(
