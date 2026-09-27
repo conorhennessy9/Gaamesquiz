@@ -2,6 +2,7 @@
 
 import { createSupabaseServerAdminClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { mapQuizQuestionToGAAClock, type QuizQuestionRow } from "./quiz-questions-adapter"
 
 export interface GAAClockQuestion {
   id: number
@@ -26,16 +27,31 @@ export async function getGAAClockQuestions(): Promise<GAAClockQuestion[]> {
   return data.map((q) => ({ ...q, question_date: q.question_date as string })) as GAAClockQuestion[]
 }
 
+// GAA Against The Clock gameplay is served from the shared quiz_questions
+// CMS table: gaa + against_the_clock + published, for the requested date.
+// When more than one published question exists for the same date, prefer
+// the one with the lowest scheduled_position. The legacy
+// gaa_clock_questions table (read/written above and by the admin screen)
+// is left untouched.
 export async function getGAAClockQuestionByDate(date: string): Promise<GAAClockQuestion | null> {
   const supabase = await createSupabaseServerAdminClient()
-  const { data, error } = await supabase.from("gaa_clock_questions").select("*").eq("question_date", date).maybeSingle()
+  const { data, error } = await supabase
+    .from("quiz_questions")
+    .select("*")
+    .eq("sport", "gaa")
+    .eq("game_type", "against_the_clock")
+    .eq("published", true)
+    .eq("question_date", date)
+    .order("scheduled_position", { ascending: true, nullsFirst: false })
+    .limit(1)
 
   if (error) {
     console.error(`Error fetching GAA clock question for date ${date}:`, error)
     return null
   }
-  if (!data) return null
-  return { ...data, question_date: data.question_date as string } as GAAClockQuestion
+  const question = data?.[0] as QuizQuestionRow | undefined
+  if (!question) return null
+  return mapQuizQuestionToGAAClock(question)
 }
 
 export async function createGAAClockQuestion(
