@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { NavigationMenu } from "@/components/navigation-menu"
 import { getCurrentGMTDateString, formatDisplayDate, parseDateStringToGMT } from "@/lib/date-utils"
-import { getGAATenaBallQuestionByDate, type GAATenaBallQuestion } from "./actions"
+import type { GAATenaBallQuestion } from "./actions"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { mapQuizQuestionToGAATenaBall, type QuizQuestionRow } from "./quiz-questions-adapter"
 import { findBestMatch } from "@/lib/answer-utils"
 import { AnswerAutocomplete } from "@/components/answer-autocomplete"
 
@@ -70,6 +72,8 @@ export default function GAATenablePage() {
   const [questionError, setQuestionError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  const supabase = createSupabaseBrowserClient()
+
   useEffect(() => {
     const updateDateAndLoadData = () => {
       const newGmtDateStr = getCurrentGMTDateString()
@@ -103,11 +107,28 @@ export default function GAATenablePage() {
     })
 
     try {
-      const question = await getGAATenaBallQuestionByDate(gmtDate)
+      // GAA TenaBall is served from the shared quiz_questions CMS table:
+      // gaa + tenable + published, for the requested GMT date. When more
+      // than one published question exists for the same date, prefer the
+      // one with the lowest scheduled_position.
+      const { data, error } = await supabase
+        .from("quiz_questions")
+        .select("*")
+        .eq("sport", "gaa")
+        .eq("game_type", "tenable")
+        .eq("published", true)
+        .eq("question_date", gmtDate)
+        .order("scheduled_position", { ascending: true, nullsFirst: false })
+        .limit(1)
+
+      const row = data?.[0] as QuizQuestionRow | undefined
+      const question = error ? null : row ? mapQuizQuestionToGAATenaBall(row) : null
       console.log("[v0] GAA Tenable - Loaded question for", gmtDate, ":", question)
       setTodaysQuestion(question)
 
-      if (!question) {
+      if (error) {
+        setQuestionError(`Failed to load question for ${formatDisplayDate(gmtDate)}. ${error.message}`)
+      } else if (!question) {
         setQuestionError(`No question available for ${formatDisplayDate(gmtDate)}. Please add one in the admin panel.`)
       }
 
