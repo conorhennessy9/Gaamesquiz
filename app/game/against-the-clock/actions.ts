@@ -1,6 +1,6 @@
 "use server"
 
-import { createSupabaseServerAdminClient } from "@/lib/supabase/server"
+import { createSupabaseServerAdminClient, requireAdminUser } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { mapQuizQuestionToRugbyClock, type QuizQuestionRow } from "./quiz-questions-adapter"
 
@@ -12,7 +12,11 @@ export interface RugbyClockQuestion {
   created_at?: string
 }
 
+// Admin-only listing. Server Actions are independently invokable endpoints,
+// so this must check auth itself rather than relying on the admin page's
+// redirect guard.
 export async function getRugbyClockQuestions(): Promise<RugbyClockQuestion[]> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_clock_questions")
@@ -57,6 +61,7 @@ export async function getRugbyClockQuestionByDate(date: string): Promise<RugbyCl
 export async function createRugbyClockQuestion(
   questionData: Omit<RugbyClockQuestion, "id" | "created_at">,
 ): Promise<{ success: boolean; error?: string; data?: RugbyClockQuestion }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
 
   // Check if a question for this date already exists
@@ -100,6 +105,7 @@ export async function updateRugbyClockQuestion(
   id: number,
   questionData: Partial<Omit<RugbyClockQuestion, "id" | "created_at">>,
 ): Promise<{ success: boolean; error?: string; data?: RugbyClockQuestion }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
 
   // If question_date is being updated, check for conflicts
@@ -143,6 +149,7 @@ export async function updateRugbyClockQuestion(
 }
 
 export async function deleteRugbyClockQuestion(id: number): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
   const { error } = await supabase.from("rugby_clock_questions").delete().eq("id", id)
 

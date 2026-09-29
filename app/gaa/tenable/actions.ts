@@ -1,6 +1,6 @@
 "use server"
 
-import { createSupabaseServerAdminClient } from "@/lib/supabase/server"
+import { createSupabaseServerAdminClient, requireAdminUser } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export interface GAATenaBallQuestion {
@@ -12,8 +12,12 @@ export interface GAATenaBallQuestion {
   updated_at?: string
 }
 
+// Admin-only listing. Server Actions are independently invokable endpoints,
+// so this must check auth itself rather than relying on the admin page's
+// redirect guard.
 export async function getGAATenaBallQuestions(): Promise<GAATenaBallQuestion[]> {
   try {
+    await requireAdminUser()
     const supabase = await createSupabaseServerAdminClient()
     const { data, error } = await supabase
       .from("gaa_tenaball_questions")
@@ -59,6 +63,7 @@ export async function createGAATenaBallQuestion(
   questionDate: string,
 ): Promise<{ success: boolean; message: string; question?: GAATenaBallQuestion }> {
   try {
+    await requireAdminUser()
     const supabase = await createSupabaseServerAdminClient()
 
     // Check if a question already exists for this date
@@ -118,6 +123,7 @@ export async function updateGAATenaBallQuestion(
   questionDate: string,
 ): Promise<{ success: boolean; message: string; question?: GAATenaBallQuestion }> {
   try {
+    await requireAdminUser()
     const supabase = await createSupabaseServerAdminClient()
 
     // Check if updating the date would conflict with another question
@@ -175,6 +181,7 @@ export async function updateGAATenaBallQuestion(
 
 export async function deleteGAATenaBallQuestion(id: number): Promise<{ success: boolean; message: string }> {
   try {
+    await requireAdminUser()
     const supabase = await createSupabaseServerAdminClient()
     const { error } = await supabase.from("gaa_tenaball_questions").delete().eq("id", id)
 

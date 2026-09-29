@@ -28,6 +28,24 @@ export async function createClient() {
   return createSupabaseServerClient()
 }
 
+// Verifies the caller has an authenticated admin session before allowing an
+// admin-only Server Action (create/update/delete/list) to run. Server
+// Actions are independently invokable endpoints, so page-level redirect
+// guards do NOT protect them — every mutating or admin-only action must
+// call this itself. Throws if there is no authenticated user.
+export async function requireAdminUser() {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Unauthorized: admin authentication required")
+  }
+
+  return user
+}
+
 export async function createSupabaseServerAdminClient() {
   // For admin actions using the service_role key, we might not need
   // the full cookie management if we're not dealing with user sessions.

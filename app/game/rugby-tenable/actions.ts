@@ -1,10 +1,14 @@
 "use server"
 
-import { createSupabaseServerAdminClient } from "@/lib/supabase/server"
+import { createSupabaseServerAdminClient, requireAdminUser } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { RugbyTenaBallQuestion } from "./types"
 
+// Admin-only listing. Server Actions are independently invokable endpoints,
+// so this must check auth itself rather than relying on the admin page's
+// redirect guard.
 export async function getRugbyTenaBallQuestions(): Promise<RugbyTenaBallQuestion[]> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
   const { data, error } = await supabase
     .from("rugby_tenaball_questions")
@@ -38,6 +42,7 @@ export async function getRugbyTenaBallQuestionByDate(date: string): Promise<Rugb
 export async function createRugbyTenaBallQuestion(
   questionData: Omit<RugbyTenaBallQuestion, "id" | "created_at">,
 ): Promise<{ success: boolean; error?: string; data?: RugbyTenaBallQuestion }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
 
   // Validate date format if necessary, though Supabase client should handle it
@@ -86,6 +91,7 @@ export async function updateRugbyTenaBallQuestion(
   id: number,
   questionData: Partial<Omit<RugbyTenaBallQuestion, "id" | "created_at">>,
 ): Promise<{ success: boolean; error?: string; data?: RugbyTenaBallQuestion }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
 
   // If question_date is being updated, check for conflicts
@@ -128,6 +134,7 @@ export async function updateRugbyTenaBallQuestion(
 }
 
 export async function deleteRugbyTenaBallQuestion(id: number): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser()
   const supabase = await createSupabaseServerAdminClient()
   const { error } = await supabase.from("rugby_tenaball_questions").delete().eq("id", id)
 
