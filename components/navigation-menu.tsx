@@ -88,7 +88,7 @@ export function NavigationMenu({ currentSection = "home" }: NavigationMenuProps)
         {/* Admin / CMS access — pinned above the footer */}
         <div className="px-4 py-3 border-t border-white/[0.06]">
           <NavLink
-            href="/cms"
+            href="/admin"
             icon={<LayoutDashboard className="w-4 h-4" />}
             label="CMS"
             onClick={() => setIsOpen(false)}

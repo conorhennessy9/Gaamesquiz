@@ -27,18 +27,10 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect all /cms routes — redirect to login if not authenticated
-  if (request.nextUrl.pathname.startsWith("/cms") && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/auth/login"
-    url.searchParams.set("next", request.nextUrl.pathname)
-    return NextResponse.redirect(url)
-  }
-
-  // If already logged in and hitting login, redirect to CMS
+  // If already logged in and hitting the legacy auth login page, redirect to the admin dashboard
   if (request.nextUrl.pathname === "/auth/login" && user) {
     const url = request.nextUrl.clone()
-    url.pathname = "/cms"
+    url.pathname = "/admin/dashboard"
     return NextResponse.redirect(url)
   }
 
