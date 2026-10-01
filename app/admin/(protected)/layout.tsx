@@ -29,17 +29,23 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
             <Link href="/admin/questions" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Questions
             </Link>
+            <Link href="/admin/questions/new" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Add Question
+            </Link>
+            <Link href="/admin/answers" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Answers
+            </Link>
             <Link href="/admin/schedule" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Schedule
             </Link>
             <Link href="/admin/calendar" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Calendar
             </Link>
-            <Link href="/admin/answers" className="text-xs text-zinc-400 hover:text-white transition-colors">
-              Answers
-            </Link>
             <Link href="/admin/import" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Import
+            </Link>
+            <Link href="/admin/sync-sheets" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Update Centre
             </Link>
           </nav>
         </div>
