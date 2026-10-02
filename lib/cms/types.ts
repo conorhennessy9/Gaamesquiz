@@ -68,18 +68,6 @@ export interface CMSQuestion {
   created_at: string
 }
 
-// Maps sport+game_type combo to the actual Supabase table name
-export const TABLE_MAP: Record<Sport, Record<GameType, string>> = {
-  rugby: {
-    tenable: "rugby_tenaball_questions",
-    against_the_clock: "rugby_against_the_clock_questions",
-  },
-  gaa: {
-    tenable: "gaa_tenaball_questions",
-    against_the_clock: "gaa_against_the_clock_questions",
-  },
-}
-
 export const SPORTS: { value: Sport; label: string }[] = [
   { value: "rugby", label: "Rugby" },
   { value: "gaa", label: "GAA" },
