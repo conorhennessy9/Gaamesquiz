@@ -47,29 +47,18 @@ const SEED_THEMES = [
 export async function getFormOptions(): Promise<FormOptions> {
   const supabase = await createClient()
 
-  const [competitionRes, themeRes, rugbyBankRes, gaaBankRes] = await Promise.all([
+  const [competitionRes, themeRes] = await Promise.all([
     supabase.from("quiz_questions").select("competition").not("competition", "is", null),
     supabase.from("quiz_questions").select("theme").not("theme", "is", null),
-    supabase.from("rugby_answer_bank").select("category").not("category", "is", null),
-    supabase.from("gaa_answer_bank").select("category").not("category", "is", null),
   ])
 
   const existingCompetitions = (competitionRes.data ?? []).map((r: any) => r.competition as string)
   const existingThemes = (themeRes.data ?? []).map((r: any) => r.theme as string)
-  const bankCategories = [...(rugbyBankRes.data ?? []), ...(gaaBankRes.data ?? [])].map(
-    (r: any) => r.category as string,
-  )
 
   const competitions = Array.from(new Set([...SEED_COMPETITIONS, ...existingCompetitions])).sort()
-  const themes = Array.from(
-    new Set([...SEED_THEMES, ...existingThemes, ...bankCategories.map(capitalize)]),
-  ).sort()
+  const themes = Array.from(new Set([...SEED_THEMES, ...existingThemes])).sort()
 
   return { competitions, themes }
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 export async function getQuestionForEdit(
