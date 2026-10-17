@@ -44,7 +44,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
             <Link href="/admin/import" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Import
             </Link>
-            <Link href="/admin/sync-sheets" className="text-xs text-zinc-400 hover:text-white transition-colors">
+            <Link href="/admin/update-centre" className="text-xs text-zinc-400 hover:text-white transition-colors">
               Update Centre
             </Link>
           </nav>
