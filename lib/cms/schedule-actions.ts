@@ -10,6 +10,7 @@ import type {
   ScheduledRunningOrderItem,
 } from "./schedule-types"
 import { APPROVED_STATUS, computeEligibility, isInCooldown } from "./schedule-cooldown"
+import { ALL_MONTHLY_CATEGORY_LABELS } from "./monthly-categories"
 import {
   previousUseDate,
   scoreSuggestion,
@@ -113,9 +114,8 @@ export async function getScheduleFilterOptions(): Promise<ScheduleFilterOptions>
 
   const competitions = Array.from(new Set((competitionRes.data ?? []).map((r: any) => r.competition as string))).sort()
   const themes = Array.from(new Set((themeRes.data ?? []).map((r: any) => r.theme as string))).sort()
-  const monthlyCategories = Array.from(
-    new Set((categoryRes.data ?? []).map((r: any) => r.monthly_category as string)),
-  ).sort()
+  const storedCategories = (categoryRes.data ?? []).map((r: any) => r.monthly_category as string)
+  const monthlyCategories = Array.from(new Set([...ALL_MONTHLY_CATEGORY_LABELS, ...storedCategories]))
 
   return { competitions, themes, monthlyCategories }
 }

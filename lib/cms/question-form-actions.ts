@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { QuizQuestion } from "./types"
 import type { AnswerEntry, QuestionFormValues, FormOptions, SaveResult } from "./question-form-types"
 import { touchAnswerLibraryUsage } from "./answer-library-actions"
+import { ALL_MONTHLY_CATEGORY_LABELS, matchPlannedCategory } from "./monthly-categories"
 
 // Server actions for the Add/Edit Question editor (/admin/questions/new and
 // /admin/questions/[id]/edit). Reads and writes the `quiz_questions` table
@@ -56,7 +57,7 @@ export async function getFormOptions(): Promise<FormOptions> {
   const existingThemes = (themeRes.data ?? []).map((r: any) => r.theme as string)
 
   const competitions = Array.from(new Set([...SEED_COMPETITIONS, ...existingCompetitions])).sort()
-  const themes = Array.from(new Set([...SEED_THEMES, ...existingThemes])).sort()
+  const themes = Array.from(new Set([...ALL_MONTHLY_CATEGORY_LABELS, ...SEED_THEMES, ...existingThemes])).sort()
 
   return { competitions, themes }
 }
@@ -150,6 +151,7 @@ function toRow(values: QuestionFormValues) {
     answers: values.answer_entries.map((e) => e.name.trim()).filter(Boolean),
     competition: values.competition.trim() || null,
     theme: values.theme.trim() || null,
+    monthly_category: matchPlannedCategory(values.sport, values.theme),
     difficulty: values.difficulty || null,
     evergreen_type: values.evergreen_type || null,
     evergreen: values.evergreen_type === "true_evergreen" || values.evergreen_type === "semi_evergreen",

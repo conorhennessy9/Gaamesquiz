@@ -3,6 +3,7 @@
 // the import (import-actions.ts), so a row is judged by exactly the same
 // rules in the preview as at insert time. Never touches the database.
 
+import { matchPlannedCategory } from "./monthly-categories"
 import {
   ANSWER_COLUMNS,
   COOLDOWN_VALUES,
@@ -209,6 +210,7 @@ export function toQuizQuestionInsert(values: RowValues) {
     answers: answersOf(values),
     competition: values.competition?.trim() || null,
     theme: values.theme?.trim() || null,
+    monthly_category: matchPlannedCategory(normalizeSport(values.sport), values.theme),
     difficulty: normalizeDifficulty(values.difficulty)!,
     evergreen_type: evergreenType,
     evergreen: evergreenType === "true_evergreen" || evergreenType === "semi_evergreen",

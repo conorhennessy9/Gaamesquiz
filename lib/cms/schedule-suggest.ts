@@ -3,6 +3,7 @@
 // draft and explicitly approves it before anything is scheduled.
 
 import { getCooldownUntil } from "./schedule-cooldown"
+import { categoryForDate, matchPlannedCategory } from "./monthly-categories"
 
 export interface SuggestionInput {
   id: number
@@ -44,11 +45,6 @@ export interface ScoredSuggestion {
   warnings: string[]
 }
 
-const MONTHS = [
-  "january", "february", "march", "april", "may", "june",
-  "july", "august", "september", "october", "november", "december",
-]
-
 const COMPETITION_WINDOW_DAYS = 7
 const VERIFY_MAX_DAYS = 90
 
@@ -65,14 +61,6 @@ export function previousUseDate(
   if (!row.last_used_at) return pastScheduled
   if (!pastScheduled) return row.last_used_at
   return row.last_used_at > pastScheduled ? row.last_used_at : pastScheduled
-}
-
-/** True if a free-text monthly category refers to the month of `date`. */
-export function categoryMatchesMonth(category: string, date: string): boolean {
-  const name = MONTHS[Number(date.slice(5, 7)) - 1]
-  if (!name) return false
-  const c = category.trim().toLowerCase()
-  return c.includes(name) || new RegExp(`\\b${name.slice(0, 3)}\\b`).test(c) || c.includes(date.slice(0, 7))
 }
 
 export function scoreSuggestion(
@@ -96,12 +84,16 @@ export function scoreSuggestion(
   }
 
   if (q.monthly_category) {
-    if (categoryMatchesMonth(q.monthly_category, targetDate)) {
+    const planned = matchPlannedCategory(q.sport, q.monthly_category)
+    const expected = categoryForDate(q.sport, targetDate)
+    if (!planned) {
+      warnings.push(`"${q.monthly_category}" is not a planned ${q.sport.toUpperCase()} monthly category`)
+    } else if (planned === expected) {
       score += 3
-      reasons.push(`Fits monthly category "${q.monthly_category}"`)
+      reasons.push(`Fits this month's category "${planned}"`)
     } else {
       score -= 2
-      warnings.push(`Monthly category is "${q.monthly_category}"`)
+      warnings.push(`Planned for "${planned}"; this month is "${expected ?? "none"}"`)
     }
   }
 
