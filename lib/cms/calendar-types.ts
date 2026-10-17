@@ -37,8 +37,12 @@ export interface CalendarDayQuestion {
   difficulty: string | null
   evergreen_type: string | null
   monthly_category: string | null
-  scheduled_position: number
+  status: string
+  scheduled_position: number | null
 }
+
+/** Statuses that count towards a day being populated (what the game can serve). */
+export const LIVE_CALENDAR_STATUSES = ["scheduled", "published"]
 
 export const FILL_STATUS_LABELS: Record<DayFillStatus, string> = {
   empty: "Empty",

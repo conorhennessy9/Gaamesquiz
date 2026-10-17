@@ -3,7 +3,15 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { CalendarDayQuestion, CalendarDaySummary, CalendarMonthResult, DayFillStatus } from "./calendar-types"
-import { REQUIRED_SLOTS_PER_DAY } from "./calendar-types"
+import { LIVE_CALENDAR_STATUSES, REQUIRED_SLOTS_PER_DAY } from "./calendar-types"
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function isRealDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value
+}
 import { APPROVED_STATUS, isInCooldown } from "./schedule-cooldown"
 import { previousUseDate } from "./schedule-suggest"
 
@@ -38,7 +46,7 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
   const { data, error } = await supabase
     .from("quiz_questions")
     .select("question_date, sport, game_type")
-    .eq("status", "scheduled")
+    .in("status", LIVE_CALENDAR_STATUSES)
     .gte("question_date", start)
     .lte("question_date", end)
 
@@ -81,10 +89,10 @@ export async function getCalendarDayQuestions(date: string): Promise<CalendarDay
   const { data, error } = await supabase
     .from("quiz_questions")
     .select(
-      "id, question_text, sport, game_type, competition, theme, difficulty, evergreen_type, monthly_category, scheduled_position",
+      "id, question_text, sport, game_type, competition, theme, difficulty, evergreen_type, monthly_category, status, scheduled_position",
     )
     .eq("question_date", date)
-    .eq("status", "scheduled")
+    .in("status", LIVE_CALENDAR_STATUSES)
     .order("scheduled_position", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true })
 
@@ -93,10 +101,8 @@ export async function getCalendarDayQuestions(date: string): Promise<CalendarDay
     return []
   }
 
-  return (data ?? []).map((row: any, index: number) => ({
-    ...row,
-    scheduled_position: row.scheduled_position ?? index + 1,
-  }))
+  // Show the stored position as-is; a missing one is displayed as "—" rather than invented.
+  return (data ?? []) as CalendarDayQuestion[]
 }
 
 /** Re-sequences scheduled_position to a clean 1..n run for the given date. */
@@ -105,7 +111,7 @@ async function renormalizePositions(supabase: Awaited<ReturnType<typeof createCl
     .from("quiz_questions")
     .select("id, scheduled_position")
     .eq("question_date", date)
-    .eq("status", "scheduled")
+    .in("status", LIVE_CALENDAR_STATUSES)
     .order("scheduled_position", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true })
 
@@ -127,17 +133,29 @@ async function renormalizePositions(supabase: Awaited<ReturnType<typeof createCl
 export async function moveCalendarQuestion(
   id: number,
   toDate: string,
-): Promise<{ success: boolean; error?: string }> {
+  options: { allowSharedSlot?: boolean } = {},
+): Promise<{ success: boolean; error?: string; conflict?: { id: number; question_text: string }[] }> {
   const supabase = await createClient()
+
+  if (!isRealDate(toDate)) {
+    return { success: false, error: "Choose a valid date to move to." }
+  }
 
   const { data: existing, error: fetchError } = await supabase
     .from("quiz_questions")
-    .select("question_date, status, last_used_at, cooldown_years")
+    .select("question_date, status, sport, game_type, last_used_at, cooldown_years")
     .eq("id", id)
     .single()
 
   if (fetchError || !existing) {
     return { success: false, error: fetchError?.message ?? "Question not found" }
+  }
+
+  if (existing.status === "published") {
+    return {
+      success: false,
+      error: "This question is published and live. Change its status in the question editor before moving it.",
+    }
   }
 
   if (existing.status !== "scheduled" || !existing.question_date) {
@@ -154,16 +172,40 @@ export async function moveCalendarQuestion(
     return { success: false, error: "This question already ran on a past date; its usage history can't be moved." }
   }
 
+  if (toDate < today) {
+    return { success: false, error: "Questions can't be moved onto a past date." }
+  }
+
   if (isInCooldown(toDate, previousUseDate(existing, today), existing.cooldown_years)) {
     return { success: false, error: "This question is still in its cooldown window for that date." }
+  }
+
+  // Never silently stack onto a date that already has content for the same
+  // sport + game type: report the clash and let the admin decide.
+  if (!options.allowSharedSlot) {
+    const { data: clashes, error: clashError } = await supabase
+      .from("quiz_questions")
+      .select("id, question_text")
+      .eq("question_date", toDate)
+      .eq("sport", existing.sport)
+      .eq("game_type", existing.game_type)
+      .in("status", LIVE_CALENDAR_STATUSES)
+      .neq("id", id)
+
+    if (clashError) {
+      return { success: false, error: `Couldn't check the target date: ${clashError.message}` }
+    }
+    if (clashes && clashes.length > 0) {
+      return { success: false, conflict: clashes }
+    }
   }
 
   const { data: maxRow } = await supabase
     .from("quiz_questions")
     .select("scheduled_position")
     .eq("question_date", toDate)
-    .eq("status", "scheduled")
-    .order("scheduled_position", { ascending: false })
+    .in("status", LIVE_CALENDAR_STATUSES)
+    .order("scheduled_position", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle()
 
@@ -194,7 +236,26 @@ export async function moveCalendarQuestion(
 export async function removeCalendarQuestion(id: number): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
 
-  const { data: existing } = await supabase.from("quiz_questions").select("question_date").eq("id", id).single()
+  const { data: existing, error: fetchError } = await supabase
+    .from("quiz_questions")
+    .select("question_date, status")
+    .eq("id", id)
+    .single()
+
+  if (fetchError || !existing) {
+    return { success: false, error: fetchError?.message ?? "Question not found" }
+  }
+
+  if (existing.status === "published") {
+    return {
+      success: false,
+      error: "This question is published and live. Change its status in the question editor before removing it.",
+    }
+  }
+
+  if (existing.status !== "scheduled") {
+    return { success: false, error: "Question is not currently scheduled." }
+  }
 
   const today = new Date().toISOString().slice(0, 10)
   if (existing?.question_date && existing.question_date < today) {

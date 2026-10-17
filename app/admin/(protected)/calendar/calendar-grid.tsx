@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, CalendarX2, ArrowRightLeft, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, CalendarX2, ArrowRightLeft, Loader2, ExternalLink } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +16,7 @@ import {
   type CalendarDayQuestion,
   type CalendarDaySummary,
 } from "@/lib/cms/calendar-types"
-import { GAME_TYPE_OPTIONS, SPORT_OPTIONS } from "@/lib/cms/schedule-types"
+import { GAME_TYPE_OPTIONS, QUESTION_STATUS_OPTIONS, SPORT_OPTIONS } from "@/lib/cms/schedule-types"
 import { getCalendarDayQuestions, moveCalendarQuestion, removeCalendarQuestion } from "@/lib/cms/calendar-actions"
 
 const MONTH_NAMES = [
@@ -49,6 +50,10 @@ function sportLabel(value: string) {
 
 function gameTypeLabel(value: string) {
   return GAME_TYPE_OPTIONS.find((g) => g.value === value)?.label ?? value
+}
+
+function statusLabel(value: string) {
+  return QUESTION_STATUS_OPTIONS.find((s) => s.value === value)?.label ?? value
 }
 
 /** Builds the 7-column grid of cells for a month view, padded with leading/trailing blanks. */
@@ -292,6 +297,7 @@ function DayDetailDialog({
   const [pendingId, setPendingId] = useState<number | null>(null)
   const [movingId, setMovingId] = useState<number | null>(null)
   const [moveTarget, setMoveTarget] = useState<string>("")
+  const [moveConflict, setMoveConflict] = useState<{ id: number; question_text: string }[] | null>(null)
 
   useEffect(() => {
     let active = true
@@ -307,7 +313,15 @@ function DayDetailDialog({
     }
   }, [date])
 
+  function resetMove() {
+    setMovingId(null)
+    setMoveTarget("")
+    setMoveConflict(null)
+  }
+
   async function handleRemove(id: number) {
+    if (!window.confirm("Remove this question from this date? It will go back to Verified and can be scheduled again."))
+      return
     setActionError(null)
     setPendingId(id)
     const result = await removeCalendarQuestion(id)
@@ -320,19 +334,22 @@ function DayDetailDialog({
     router.refresh()
   }
 
-  async function handleMove(id: number) {
+  async function handleMove(id: number, allowSharedSlot = false) {
     if (!moveTarget) return
     setActionError(null)
     setPendingId(id)
-    const result = await moveCalendarQuestion(id, moveTarget)
+    const result = await moveCalendarQuestion(id, moveTarget, { allowSharedSlot })
     setPendingId(null)
+    if (result.conflict) {
+      setMoveConflict(result.conflict)
+      return
+    }
     if (!result.success) {
       setActionError(result.error ?? "Failed to move question")
       return
     }
     setQuestions((prev) => (prev ?? []).filter((q) => q.id !== id))
-    setMovingId(null)
-    setMoveTarget("")
+    resetMove()
     router.refresh()
   }
 
@@ -362,15 +379,27 @@ function DayDetailDialog({
           <p className="text-sm text-zinc-500 py-6 text-center">No questions scheduled for this day.</p>
         ) : (
           <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
-            {questions.map((q) => (
+            {questions.map((q) => {
+              const isPublished = q.status === "published"
+              return (
               <li key={q.id} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[11px] font-medium text-zinc-300">
-                    {q.scheduled_position}
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[11px] font-medium text-zinc-300"
+                    title="Scheduled position"
+                  >
+                    {q.scheduled_position ?? "—"}
                   </span>
                   <p className="flex-1 text-sm text-zinc-200 line-clamp-2">{q.question_text}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pl-7">
+                  <span
+                    className={`text-[11px] rounded px-1.5 py-0.5 ${
+                      isPublished ? "bg-lime-500/15 text-lime-300" : "bg-sky-500/15 text-sky-300"
+                    }`}
+                  >
+                    {statusLabel(q.status)}
+                  </span>
                   <span className="text-[11px] text-zinc-400 bg-zinc-800/80 rounded px-1.5 py-0.5 capitalize">
                     {sportLabel(q.sport)}
                   </span>
@@ -389,15 +418,59 @@ function DayDetailDialog({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 pl-7">
+                {movingId === q.id && moveConflict && (
+                  <div className="ml-7 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 space-y-2">
+                    <p>
+                      {moveTarget} already has {moveConflict.length} {sportLabel(q.sport)} {gameTypeLabel(q.game_type)}{" "}
+                      question{moveConflict.length === 1 ? "" : "s"}. Nothing has been changed.
+                    </p>
+                    <ul className="list-disc pl-4 text-amber-100/80">
+                      {moveConflict.map((c) => (
+                        <li key={c.id} className="line-clamp-1">
+                          {c.question_text}
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      Adding it anyway keeps the existing question and puts this one after it in the running order.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pendingId === q.id}
+                        onClick={() => handleMove(q.id, true)}
+                        className="bg-amber-400 text-black hover:bg-amber-300"
+                      >
+                        Add alongside
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setMoveConflict(null)}
+                        className="text-amber-200 hover:text-white hover:bg-amber-500/10"
+                      >
+                        Pick another date
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pl-7">
                   {movingId === q.id ? (
                     <>
                       <div className="w-40">
-                        <DatePickerField value={moveTarget} onChange={setMoveTarget} placeholder="New date" />
+                        <DatePickerField
+                          value={moveTarget}
+                          onChange={(value) => {
+                            setMoveTarget(value)
+                            setMoveConflict(null)
+                          }}
+                          placeholder="New date"
+                        />
                       </div>
                       <Button
                         size="sm"
-                        disabled={!moveTarget || pendingId === q.id}
+                        disabled={!moveTarget || pendingId === q.id || !!moveConflict}
                         onClick={() => handleMove(q.id)}
                         className="bg-lime-500 text-black hover:bg-lime-400 disabled:opacity-40"
                       >
@@ -406,10 +479,7 @@ function DayDetailDialog({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          setMovingId(null)
-                          setMoveTarget("")
-                        }}
+                        onClick={resetMove}
                         className="text-zinc-400 hover:text-white hover:bg-zinc-800"
                       >
                         Cancel
@@ -418,10 +488,31 @@ function DayDetailDialog({
                   ) : (
                     <>
                       <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="border-zinc-800 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      >
+                        <Link href={`/admin/questions/${q.id}/edit`}>
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open
+                        </Link>
+                      </Button>
+                      {isPublished ? (
+                        <span className="text-[11px] text-zinc-500">
+                          Published questions are live. Change status in the editor to move or remove.
+                        </span>
+                      ) : (
+                      <>
+                      <Button
                         size="sm"
                         variant="outline"
                         disabled={pendingId === q.id}
-                        onClick={() => setMovingId(q.id)}
+                        onClick={() => {
+                          setMoveConflict(null)
+                          setMoveTarget("")
+                          setMovingId(q.id)
+                        }}
                         className="border-zinc-800 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
                       >
                         <ArrowRightLeft className="h-3.5 w-3.5" />
@@ -437,11 +528,14 @@ function DayDetailDialog({
                         <CalendarX2 className="h-3.5 w-3.5" />
                         Remove
                       </Button>
+                      </>
+                      )}
                     </>
                   )}
                 </div>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </DialogContent>
