@@ -1,6 +1,12 @@
-import { getScheduleCandidates, getScheduleFilterOptions, getScheduledRunningOrder } from "@/lib/cms/schedule-actions"
+import {
+  getScheduleCandidates,
+  getScheduleFilterOptions,
+  getScheduledRunningOrder,
+  getScheduleSuggestions,
+} from "@/lib/cms/schedule-actions"
 import type { ScheduleFilters } from "@/lib/cms/schedule-types"
 import ScheduleTable from "./schedule-table"
+import ScheduleSuggestions from "./schedule-suggestions"
 
 export const metadata = {
   title: "Schedule | GAAmesquiz Admin",
@@ -35,20 +41,35 @@ export default async function SchedulePage({
     page: first(params.page) ? Number(first(params.page)) : 1,
   }
 
-  const [result, filterOptions, runningOrder] = await Promise.all([
+  const [result, filterOptions, runningOrder, suggestionResult] = await Promise.all([
     getScheduleCandidates(filters),
     getScheduleFilterOptions(),
     getScheduledRunningOrder(filters.date),
+    getScheduleSuggestions(filters),
   ])
+
+  const dateLabel = new Date(`${filters.date}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-white">Schedule</h1>
         <p className="text-sm text-zinc-500 mt-0.5">
-          Pick a date and see which questions in the library are eligible to run on it.
+          Pick a date, review suggested questions, and approve the final schedule.
         </p>
       </div>
+
+      <ScheduleSuggestions
+        date={filters.date}
+        dateLabel={dateLabel}
+        suggestions={suggestionResult.suggestions}
+        considered={suggestionResult.considered}
+        loadError={suggestionResult.error}
+      />
 
       <ScheduleTable
         initialData={result.data}

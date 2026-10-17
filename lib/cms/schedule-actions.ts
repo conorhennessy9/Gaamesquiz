@@ -10,6 +10,13 @@ import type {
   ScheduledRunningOrderItem,
 } from "./schedule-types"
 import { APPROVED_STATUS, computeEligibility, isInCooldown } from "./schedule-cooldown"
+import {
+  previousUseDate,
+  scoreSuggestion,
+  type NearbyScheduled,
+  type ScoredSuggestion,
+  type SuggestionInput,
+} from "./schedule-suggest"
 
 // Server actions for /admin/schedule. Reads and writes the `quiz_questions`
 // table only — no per-sport gameplay table is touched, so public game
@@ -85,9 +92,11 @@ export async function getScheduleCandidates(filters: ScheduleFilters): Promise<S
     status: string
   }>
 
+  const today = new Date().toISOString().slice(0, 10)
   const candidates: ScheduleCandidate[] = rows.map((row) => {
-    const { eligibility, cooldownUntil } = computeEligibility(row, filters.date)
-    return { ...row, eligibility, cooldownUntil }
+    const lastUsed = previousUseDate(row, today)
+    const { eligibility, cooldownUntil } = computeEligibility({ ...row, last_used_at: lastUsed }, filters.date)
+    return { ...row, last_used_at: lastUsed, eligibility, cooldownUntil }
   })
 
   return { data: candidates, count: count ?? 0, page, pageSize }
@@ -151,14 +160,17 @@ export async function scheduleQuestion(
 
   // Cooldown applies regardless of current status, unless we're just
   // keeping/reordering the question on the date it is already scheduled for.
-  if (existing.question_date !== date && isInCooldown(date, existing.last_used_at, existing.cooldown_years)) {
+  const today = new Date().toISOString().slice(0, 10)
+  if (
+    existing.question_date !== date &&
+    isInCooldown(date, previousUseDate(existing, today), existing.cooldown_years)
+  ) {
     return {
       success: false,
       error: "This question is still in its cooldown window for that date.",
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
   const patch: Record<string, unknown> = {
     question_date: date,
     status: "scheduled",
@@ -285,6 +297,134 @@ export async function moveScheduledPosition(
 
   revalidatePath("/admin/schedule")
   return { success: true }
+}
+
+const SUGGESTION_LIMIT = 10
+const NEARBY_WINDOW_DAYS = 7
+
+function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Ranked suggestions for `filters.date`. Read-only: never schedules anything.
+ * Only approved, unscheduled questions outside their cooldown (based on
+ * last_used_at or a past scheduled date) are considered.
+ */
+export async function getScheduleSuggestions(
+  filters: ScheduleFilters,
+): Promise<{ suggestions: ScoredSuggestion[]; considered: number; error?: string }> {
+  const supabase = await createClient()
+  const today = new Date().toISOString().slice(0, 10)
+
+  let query = supabase
+    .from("quiz_questions")
+    .select(
+      "id, question_text, sport, game_type, competition, difficulty, evergreen_type, monthly_category, cooldown_years, last_used_at, last_verified_at, question_date, status",
+    )
+    .eq("status", APPROVED_STATUS)
+
+  if (filters.sport) query = query.eq("sport", filters.sport)
+  if (filters.game_type) query = query.eq("game_type", filters.game_type)
+  if (filters.competition) query = query.eq("competition", filters.competition)
+  if (filters.theme) query = query.eq("theme", filters.theme)
+  if (filters.monthly_category) query = query.eq("monthly_category", filters.monthly_category)
+  if (filters.difficulty) query = query.eq("difficulty", filters.difficulty)
+  if (filters.evergreen_type) query = query.eq("evergreen_type", filters.evergreen_type)
+  if (filters.cooldown_years) query = query.eq("cooldown_years", Number(filters.cooldown_years))
+
+  const [{ data, error }, { data: nearbyData, error: nearbyError }] = await Promise.all([
+    query,
+    supabase
+      .from("quiz_questions")
+      .select("id, sport, game_type, competition, difficulty, question_date")
+      .eq("status", "scheduled")
+      .gte("question_date", shiftDate(filters.date, -NEARBY_WINDOW_DAYS))
+      .lte("question_date", shiftDate(filters.date, NEARBY_WINDOW_DAYS)),
+  ])
+
+  if (error || nearbyError) {
+    return { suggestions: [], considered: 0, error: (error ?? nearbyError)?.message }
+  }
+
+  const rows = (data ?? []) as SuggestionInput[]
+  const nearby = (nearbyData ?? []) as NearbyScheduled[]
+
+  const eligible = rows.filter(
+    (q) => !isInCooldown(filters.date, previousUseDate(q, today), q.cooldown_years),
+  )
+
+  const suggestions = eligible
+    .map((q) => scoreSuggestion(q, filters.date, today, nearby))
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .slice(0, SUGGESTION_LIMIT)
+
+  return { suggestions, considered: eligible.length }
+}
+
+/**
+ * Commits an admin-approved draft schedule for `date`, appending the
+ * questions to that date's running order in the given order. Every question
+ * is re-checked on the server first; if any one fails, nothing is saved.
+ */
+export async function approveSchedule(
+  date: string,
+  ids: number[],
+): Promise<{ success: boolean; scheduled: number; errors: { id: number; error: string }[] }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { success: false, scheduled: 0, errors: [{ id: 0, error: "Invalid date." }] }
+  }
+  const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)))
+  if (uniqueIds.length === 0) {
+    return { success: false, scheduled: 0, errors: [{ id: 0, error: "No questions selected." }] }
+  }
+
+  const supabase = await createClient()
+  const today = new Date().toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from("quiz_questions")
+    .select("id, status, question_date, last_used_at, cooldown_years")
+    .in("id", uniqueIds)
+
+  if (error) {
+    return { success: false, scheduled: 0, errors: [{ id: 0, error: error.message }] }
+  }
+
+  const byId = new Map((data ?? []).map((row: any) => [row.id as number, row]))
+  const errors: { id: number; error: string }[] = []
+
+  for (const id of uniqueIds) {
+    const row = byId.get(id)
+    if (!row) {
+      errors.push({ id, error: "Question not found." })
+    } else if (row.status !== APPROVED_STATUS) {
+      errors.push({ id, error: `Status is "${row.status}"; only verified questions can be scheduled.` })
+    } else if (isInCooldown(date, previousUseDate(row, today), row.cooldown_years)) {
+      errors.push({ id, error: "Still in its cooldown window for this date." })
+    }
+  }
+
+  if (errors.length > 0) {
+    return { success: false, scheduled: 0, errors }
+  }
+
+  let scheduled = 0
+  for (const id of uniqueIds) {
+    const result = await scheduleQuestion(id, date)
+    if (!result.success) {
+      errors.push({ id, error: result.error ?? "Failed to schedule." })
+    } else {
+      scheduled++
+    }
+  }
+
+  revalidatePath("/admin/schedule")
+  revalidatePath("/admin/questions")
+  revalidatePath("/admin/calendar")
+  return { success: errors.length === 0, scheduled, errors }
 }
 
 /** Re-sequences scheduled_position to a clean 1..n run for the given date. */
