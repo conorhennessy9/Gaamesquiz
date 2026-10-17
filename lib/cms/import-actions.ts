@@ -8,7 +8,8 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { ANSWER_COLUMNS, normalizeQuestionText, type ParsedImportRow } from "./import-types"
+import { normalizeQuestionText, type ParsedImportRow } from "./import-types"
+import { toQuizQuestionInsert, validateImportValues } from "./import-validation"
 
 export interface ImportRowOutcome {
   rowNumber: number
@@ -33,31 +34,27 @@ export interface ImportRunResult {
   fatalError?: string
 }
 
-function toInsertRow(row: ParsedImportRow) {
-  const v = row.values
-  const answers = ANSWER_COLUMNS.map((c) => v[c]).filter((a): a is string => Boolean(a))
+const PAGE_SIZE = 1000
 
-  return {
-    question_text: v.question!.trim(),
-    sport: v.sport!.trim().toLowerCase(),
-    game_type: v.game_type!.trim().toLowerCase(),
-    answers,
-    competition: v.competition?.trim() || null,
-    theme: v.theme?.trim() || null,
-    difficulty: v.difficulty!.trim().toLowerCase(),
-    evergreen_type: v.evergreen_type?.trim().toLowerCase() || null,
-    evergreen:
-      v.evergreen_type?.trim().toLowerCase() === "true_evergreen" ||
-      v.evergreen_type?.trim().toLowerCase() === "semi_evergreen",
-    review_frequency: v.review_frequency?.trim().toLowerCase() || null,
-    update_trigger: v.update_trigger?.trim() || null,
-    last_verified_at: v.last_verified?.trim() || null,
-    snapshot_period: v.snapshot_period?.trim() || null,
-    notes: v.notes?.trim() || null,
-    cooldown_years: v.cooldown_years?.trim() ? Number(v.cooldown_years.trim()) : null,
-    status: "draft",
-    published: false,
+/** Reads every existing question_text, paging past Supabase's default
+ * 1,000-row response cap so duplicate checks never miss older questions. */
+async function loadExistingNormalizedQuestions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ texts: Set<string>; error?: string }> {
+  const texts = new Set<string>()
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("quiz_questions")
+      .select("question_text")
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) return { texts, error: error.message }
+    for (const r of (data ?? []) as { question_text: string }[]) {
+      texts.add(normalizeQuestionText(r.question_text))
+    }
+    if (!data || data.length < PAGE_SIZE) break
   }
+  return { texts }
 }
 
 /**
@@ -66,21 +63,17 @@ function toInsertRow(row: ParsedImportRow) {
  * uploader to flag existing-library duplicates in the preview before import
  * even runs, and re-used defensively inside `importValidQuestions` itself.
  */
-export async function findExistingQuestionTexts(normalizedTexts: string[]): Promise<string[]> {
+export async function findExistingQuestionTexts(
+  normalizedTexts: string[],
+): Promise<{ matches: string[]; error?: string }> {
   const wanted = new Set(normalizedTexts)
-  if (wanted.size === 0) return []
+  if (wanted.size === 0) return { matches: [] }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.from("quiz_questions").select("question_text")
+  const { texts, error } = await loadExistingNormalizedQuestions(supabase)
+  if (error) return { matches: [], error }
 
-  if (error || !data) return []
-
-  const matches = new Set<string>()
-  for (const r of data as { question_text: string }[]) {
-    const normalized = normalizeQuestionText(r.question_text)
-    if (wanted.has(normalized)) matches.add(normalized)
-  }
-  return Array.from(matches)
+  return { matches: Array.from(wanted).filter((t) => texts.has(t)) }
 }
 
 /**
@@ -101,13 +94,19 @@ export async function importValidQuestions(rows: ParsedImportRow[]): Promise<Imp
   const skipped: ImportSkippedRow[] = []
   const errors: ImportErrorRow[] = []
 
-  const candidateRows = rows.filter((r) => r.issues.length === 0)
+  // Never trust the client's verdict alone: a row is a candidate only if the
+  // client found no issues AND the same rules pass again on the server.
+  const candidateRows: ParsedImportRow[] = []
   for (const row of rows) {
-    if (row.issues.length === 0) continue
+    const issues = row.issues.length > 0 ? row.issues : validateImportValues(row.values)
+    if (issues.length === 0) {
+      candidateRows.push(row)
+      continue
+    }
     skipped.push({
       rowNumber: row.rowNumber,
       question: row.values.question ?? "(missing question)",
-      reason: row.issues[0]?.message ?? "Failed validation.",
+      reason: issues.map((i) => i.message).join(" "),
     })
   }
 
@@ -117,7 +116,7 @@ export async function importValidQuestions(rows: ParsedImportRow[]): Promise<Imp
 
   const supabase = await createClient()
 
-  const { data: existingData, error: existingError } = await supabase.from("quiz_questions").select("question_text")
+  const { texts: existingNormalized, error: existingError } = await loadExistingNormalizedQuestions(supabase)
 
   if (existingError) {
     return {
@@ -126,13 +125,10 @@ export async function importValidQuestions(rows: ParsedImportRow[]): Promise<Imp
       errorCount: 0,
       skipped,
       errors,
-      fatalError: `Could not check for existing questions: ${existingError.message}`,
+      fatalError: `Could not check for existing questions, so nothing was imported: ${existingError}`,
     }
   }
 
-  const existingNormalized = new Set(
-    (existingData as { question_text: string }[]).map((r) => normalizeQuestionText(r.question_text)),
-  )
   const seenInBatch = new Set<string>()
 
   let importedCount = 0
@@ -151,7 +147,7 @@ export async function importValidQuestions(rows: ParsedImportRow[]): Promise<Imp
     }
     seenInBatch.add(normalized)
 
-    const { error } = await supabase.from("quiz_questions").insert(toInsertRow(row))
+    const { error } = await supabase.from("quiz_questions").insert(toQuizQuestionInsert(row.values))
 
     if (error) {
       errors.push({ rowNumber: row.rowNumber, question, message: error.message })

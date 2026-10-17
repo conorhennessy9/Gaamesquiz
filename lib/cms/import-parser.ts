@@ -1,16 +1,12 @@
 // Client-side CSV/XLSX parsing for the /admin/import bulk question importer.
 // This module only reads and structures the file — it never writes to the
-// database. Actual import/commit is a separate, not-yet-built step.
+// database. The commit step lives in import-actions.ts.
 
 import * as XLSX from "xlsx"
 import {
-  ANSWER_COLUMNS,
-  DIFFICULTY_VALUES,
-  GAME_TYPE_VALUES,
   IMPORT_COLUMNS,
   normalizeQuestionText,
   REQUIRED_IMPORT_COLUMNS,
-  SPORT_VALUES,
   type ColumnMapping,
   type ImportColumn,
   type ImportIssue,
@@ -19,6 +15,7 @@ import {
   type ImportSummary,
   type ParsedImportRow,
 } from "./import-types"
+import { validateImportValues } from "./import-validation"
 
 /** Normalize a raw header into a comparable key: lowercase, trim, spaces/dashes -> underscore. */
 function normalizeHeader(raw: string): string {
@@ -40,6 +37,10 @@ const HEADER_ALIASES: Record<string, ImportColumn> = {
   comp: "competition",
   theme: "theme",
   category: "theme",
+  monthly_category: "theme",
+  thememonthly_category: "theme",
+  theme_monthly_category: "theme",
+  game: "game_type",
   game_type: "game_type",
   gametype: "game_type",
   type: "game_type",
@@ -83,7 +84,9 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
   const fileType = detectFileType(file.name)
   const buffer = await file.arrayBuffer()
 
-  const workbook = XLSX.read(buffer, { type: "array", raw: false })
+  // cellDates + dateNF render real Excel date cells as YYYY-MM-DD instead of
+  // the locale-dependent "m/d/yy" default, which would be misread as day-first.
+  const workbook = XLSX.read(buffer, { type: "array", raw: false, cellDates: true, dateNF: "yyyy-mm-dd" })
   const firstSheetName = workbook.SheetNames[0]
   if (!firstSheetName) {
     throw new Error("The file has no sheets or could not be read.")
@@ -95,6 +98,7 @@ export async function parseImportFile(file: File): Promise<ImportParseResult> {
   const grid = XLSX.utils.sheet_to_json<string[]>(sheet, {
     header: 1,
     raw: false,
+    dateNF: "yyyy-mm-dd",
     defval: "",
     blankrows: false,
   })
@@ -174,11 +178,9 @@ function validateRow(
   rowNumber: number,
   firstSeenAtByQuestion: Map<string, number>,
 ): ImportIssue[] {
-  const issues: ImportIssue[] = []
+  const issues: ImportIssue[] = validateImportValues(values)
 
-  if (!values.question) {
-    issues.push({ code: "missing_question", message: "Missing question text." })
-  } else {
+  if (values.question) {
     const normalized = normalizeQuestionText(values.question)
     const firstRow = firstSeenAtByQuestion.get(normalized)
     if (firstRow !== undefined) {
@@ -186,29 +188,6 @@ function validateRow(
     } else {
       firstSeenAtByQuestion.set(normalized, rowNumber)
     }
-  }
-
-  const hasAnswer = ANSWER_COLUMNS.some((c) => Boolean(values[c]))
-  if (!hasAnswer) {
-    issues.push({ code: "missing_answers", message: "No answers provided (answer_1 - answer_10 all empty)." })
-  }
-
-  if (!values.sport) {
-    issues.push({ code: "missing_sport", message: "Missing sport." })
-  } else if (!SPORT_VALUES.includes(values.sport.toLowerCase() as (typeof SPORT_VALUES)[number])) {
-    issues.push({ code: "invalid_sport", message: `Sport must be one of: ${SPORT_VALUES.join(", ")}.` })
-  }
-
-  if (!values.game_type) {
-    issues.push({ code: "missing_game_type", message: "Missing game type." })
-  } else if (!GAME_TYPE_VALUES.includes(values.game_type.toLowerCase() as (typeof GAME_TYPE_VALUES)[number])) {
-    issues.push({ code: "invalid_game_type", message: `Game type must be one of: ${GAME_TYPE_VALUES.join(", ")}.` })
-  }
-
-  if (!values.difficulty) {
-    issues.push({ code: "missing_difficulty", message: "Missing difficulty." })
-  } else if (!DIFFICULTY_VALUES.includes(values.difficulty.toLowerCase() as (typeof DIFFICULTY_VALUES)[number])) {
-    issues.push({ code: "invalid_difficulty", message: `Difficulty must be one of: ${DIFFICULTY_VALUES.join(", ")}.` })
   }
 
   return issues

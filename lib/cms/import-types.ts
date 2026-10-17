@@ -1,7 +1,7 @@
 // Column recognition + parsing types for the /admin/import bulk question
 // importer. This module only describes shapes and the recognized-column
-// contract — actual file parsing lives in import-parser.ts, and there is
-// deliberately no "commit to database" step yet.
+// contract. File parsing lives in import-parser.ts, row rules in
+// import-validation.ts, and the insert-only commit in import-actions.ts.
 
 /** The canonical set of columns the importer recognizes, in expected order. */
 export const IMPORT_COLUMNS = [
@@ -44,6 +44,9 @@ export const ANSWER_COLUMNS: ImportColumn[] = Array.from(
 export const SPORT_VALUES = ["rugby", "gaa"] as const
 export const GAME_TYPE_VALUES = ["tenable", "against_the_clock"] as const
 export const DIFFICULTY_VALUES = ["easy", "medium", "hard", "expert"] as const
+export const EVERGREEN_TYPE_VALUES = ["true_evergreen", "semi_evergreen", "snapshot", "live"] as const
+export const REVIEW_FREQUENCY_VALUES = ["never", "annual", "competition_end", "monthly", "manual"] as const
+export const COOLDOWN_VALUES = [1, 2, 3, 4] as const
 
 /** One column found in the uploaded file, and how it was recognized (or not). */
 export interface ColumnMapping {
@@ -68,6 +71,11 @@ export type ImportIssueCode =
   | "invalid_game_type"
   | "missing_difficulty"
   | "invalid_difficulty"
+  | "duplicate_answer"
+  | "invalid_evergreen_type"
+  | "invalid_review_frequency"
+  | "invalid_cooldown"
+  | "invalid_last_verified"
 
 export interface ImportIssue {
   code: ImportIssueCode
@@ -78,8 +86,13 @@ export interface ImportIssue {
 export const ISSUE_LABELS: Record<ImportIssueCode, { singular: string; plural: string }> = {
   missing_question: { singular: "missing question", plural: "missing question" },
   missing_answers: { singular: "missing answer", plural: "missing answer" },
-  duplicate_question: { singular: "duplicate", plural: "duplicate" },
-  duplicate_existing: { singular: "duplicate", plural: "duplicate" },
+  duplicate_question: { singular: "duplicate in file", plural: "duplicate in file" },
+  duplicate_existing: { singular: "already in library", plural: "already in library" },
+  duplicate_answer: { singular: "repeated answer", plural: "repeated answer" },
+  invalid_evergreen_type: { singular: "invalid evergreen type", plural: "invalid evergreen type" },
+  invalid_review_frequency: { singular: "invalid review frequency", plural: "invalid review frequency" },
+  invalid_cooldown: { singular: "invalid cooldown", plural: "invalid cooldown" },
+  invalid_last_verified: { singular: "invalid last verified date", plural: "invalid last verified date" },
   missing_sport: { singular: "missing sport", plural: "missing sport" },
   invalid_sport: { singular: "invalid sport", plural: "invalid sport" },
   missing_game_type: { singular: "missing game type", plural: "missing game type" },

@@ -11,8 +11,8 @@ export default function ImportPage() {
       <div className="space-y-1.5">
         <h1 className="text-xl font-semibold text-white">Import Questions</h1>
         <p className="text-sm text-zinc-400">
-          Upload a CSV or XLSX file to preview how it maps onto the question schema. This step only parses and
-          validates the file — nothing is written to the question library yet.
+          Upload a CSV or XLSX file to preview and validate it. Nothing is written until you approve the import, and
+          only valid, non-duplicate rows are added as drafts. Existing questions are never changed or deleted.
         </p>
       </div>
 

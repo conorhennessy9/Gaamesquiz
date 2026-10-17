@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react"
 import { UploadCloud, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -27,6 +28,8 @@ export default function ImportUploader() {
   const [dragActive, setDragActive] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportRunResult | null>(null)
+  const [approved, setApproved] = useState(false)
+  const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback(async (file: File) => {
@@ -41,6 +44,8 @@ export default function ImportUploader() {
     setError(null)
     setResult(null)
     setImportResult(null)
+    setApproved(false)
+    setDuplicateCheckError(null)
 
     try {
       const parsed = await parseImportFile(file)
@@ -55,9 +60,10 @@ export default function ImportUploader() {
             .map((r) => normalizeQuestionText(r.values.question!)),
         ),
       )
-      const existing = questionTexts.length > 0 ? await findExistingQuestionTexts(questionTexts) : []
-      const checked = applyExistingDuplicateCheck(parsed, existing)
+      const existing = questionTexts.length > 0 ? await findExistingQuestionTexts(questionTexts) : { matches: [] }
+      const checked = applyExistingDuplicateCheck(parsed, existing.matches)
 
+      setDuplicateCheckError(existing.error ?? null)
       setResult(checked)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to parse the file.")
@@ -83,22 +89,38 @@ export default function ImportUploader() {
     setResult(null)
     setError(null)
     setImportResult(null)
+    setApproved(false)
+    setDuplicateCheckError(null)
   }
 
   async function handleImport() {
-    if (!result) return
+    if (!result || !approved) return
     setImporting(true)
     try {
       const outcome = await importValidQuestions(result.rows)
       setImportResult(outcome)
+    } catch (err) {
+      setImportResult({
+        importedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        skipped: [],
+        errors: [],
+        fatalError: err instanceof Error ? err.message : "The import request failed. Nothing was confirmed as imported.",
+      })
     } finally {
       setImporting(false)
     }
   }
 
-  const rowsWithIssues = result?.rows.filter((r) => r.issues.length > 0).length ?? 0
+  const invalidRows = result?.rows.filter((r) => r.issues.length > 0) ?? []
   const canImport = Boolean(
-    result && !importResult && result.missingRequiredColumns.length === 0 && result.summary.valid > 0,
+    result &&
+      !importResult &&
+      !duplicateCheckError &&
+      result.missingRequiredColumns.length === 0 &&
+      result.summary.valid > 0 &&
+      approved,
   )
 
   return (
@@ -170,6 +192,17 @@ export default function ImportUploader() {
               <AlertDescription>
                 The file is missing: {result.missingRequiredColumns.join(", ")}. Import cannot proceed until this
                 column is present.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {duplicateCheckError && !importResult && (
+            <Alert variant="destructive" className="border-red-900/50 bg-red-950/30">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Could not check for existing questions</AlertTitle>
+              <AlertDescription>
+                {duplicateCheckError} Import is disabled until the library can be checked for duplicates. Re-upload
+                the file to try again.
               </AlertDescription>
             </Alert>
           )}
@@ -301,11 +334,41 @@ export default function ImportUploader() {
             </ScrollArea>
           </div>
 
+          {!importResult && invalidRows.length > 0 && <ValidationReport rows={invalidRows} />}
+
+          {!importResult && result.summary.valid > 0 && (
+            <label className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 cursor-pointer">
+              <Checkbox
+                checked={approved}
+                onCheckedChange={(checked) => setApproved(checked === true)}
+                disabled={importing || Boolean(duplicateCheckError)}
+                className="mt-0.5"
+                aria-describedby="import-approval-help"
+              />
+              <span className="space-y-0.5">
+                <span className="block text-sm text-white">
+                  I&apos;ve reviewed the preview and approve importing {result.summary.valid} valid question
+                  {result.summary.valid === 1 ? "" : "s"} as drafts
+                </span>
+                <span id="import-approval-help" className="block text-xs text-zinc-500">
+                  {invalidRows.length > 0
+                    ? `${invalidRows.length} row${invalidRows.length === 1 ? "" : "s"} with problems will not be imported. Fix them in the file and re-upload to include them.`
+                    : "Every row passed validation."}{" "}
+                  Existing questions are never changed or deleted.
+                </span>
+              </span>
+            </label>
+          )}
+
           <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-zinc-500">
               {importResult
-                ? "Import finished. Only valid, non-duplicate rows were written to the question library."
-                : `${result.summary.valid} of ${result.summary.totalDetected} row${result.summary.totalDetected === 1 ? "" : "s"} will be imported as drafts. Invalid or duplicate rows are skipped automatically.`}
+                ? "Import finished. Only valid, non-duplicate rows were added to the question library as drafts. No existing questions were changed or deleted."
+                : result.summary.valid === 0
+                  ? "No rows are valid yet, so there is nothing to import."
+                  : approved
+                    ? `Ready to import ${result.summary.valid} of ${result.summary.totalDetected} row${result.summary.totalDetected === 1 ? "" : "s"} as drafts.`
+                    : "Tick the approval box above to enable import."}
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <Button
@@ -314,7 +377,7 @@ export default function ImportUploader() {
                 disabled={importing}
                 className="border-zinc-700 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
               >
-                Cancel
+                {importResult ? "Import another file" : "Cancel"}
               </Button>
               {!importResult && (
                 <Button
@@ -370,9 +433,54 @@ function SummaryLine({
       {hasIssues ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
       <AlertTitle>{parts.join(" · ")}</AlertTitle>
       <AlertDescription className={hasIssues ? "text-amber-300/80" : "text-lime-300/80"}>
-        Invalid and duplicate rows are shown below and will be skipped — nothing invalid reaches the database.
+        {hasIssues
+          ? "Rows with problems are listed in the validation report below and will not be imported."
+          : "All rows passed validation."}
       </AlertDescription>
     </Alert>
+  )
+}
+
+function ValidationReport({ rows }: { rows: ImportParseResult["rows"] }) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium text-white">
+        Validation report · {rows.length} row{rows.length === 1 ? "" : "s"} will not be imported
+      </h3>
+      <ScrollArea className="w-full rounded-lg border border-amber-900/40">
+        <div className="max-h-[320px] overflow-auto">
+          <Table>
+            <TableHeader className="sticky top-0 bg-zinc-950">
+              <TableRow className="border-zinc-800">
+                <TableHead className="text-zinc-400 whitespace-nowrap">Row</TableHead>
+                <TableHead className="text-zinc-400 whitespace-nowrap">Question</TableHead>
+                <TableHead className="text-zinc-400 whitespace-nowrap">Problems</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.rowNumber} className="border-zinc-800 align-top">
+                  <TableCell className="text-zinc-500 text-xs">{row.rowNumber}</TableCell>
+                  <TableCell className="text-zinc-200 text-sm max-w-[260px] truncate">
+                    {row.values.question || <span className="text-zinc-600">—</span>}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <ul className="flex flex-col gap-1 text-amber-300">
+                      {row.issues.map((issue, i) => (
+                        <li key={`${issue.code}-${i}`} className="flex items-start gap-1.5">
+                          <AlertTriangle className="h-3 w-3 mt-1 shrink-0" />
+                          <span>{issue.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
