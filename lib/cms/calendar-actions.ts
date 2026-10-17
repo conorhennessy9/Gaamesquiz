@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { CalendarDayQuestion, CalendarDaySummary, CalendarMonthResult, DayFillStatus } from "./calendar-types"
 import { REQUIRED_SLOTS_PER_DAY } from "./calendar-types"
 import { APPROVED_STATUS, isInCooldown } from "./schedule-cooldown"
+import { previousUseDate } from "./schedule-suggest"
 
 // Server actions for /admin/calendar. Reads and writes the same
 // `quiz_questions` table the scheduler uses — no new table, no separate
@@ -148,7 +149,12 @@ export async function moveCalendarQuestion(
     return { success: true }
   }
 
-  if (isInCooldown(toDate, existing.last_used_at, existing.cooldown_years)) {
+  const today = new Date().toISOString().slice(0, 10)
+  if (fromDate < today) {
+    return { success: false, error: "This question already ran on a past date; its usage history can't be moved." }
+  }
+
+  if (isInCooldown(toDate, previousUseDate(existing, today), existing.cooldown_years)) {
     return { success: false, error: "This question is still in its cooldown window for that date." }
   }
 
@@ -189,6 +195,11 @@ export async function removeCalendarQuestion(id: number): Promise<{ success: boo
   const supabase = await createClient()
 
   const { data: existing } = await supabase.from("quiz_questions").select("question_date").eq("id", id).single()
+
+  const today = new Date().toISOString().slice(0, 10)
+  if (existing?.question_date && existing.question_date < today) {
+    return { success: false, error: "This question already ran on a past date; its usage history can't be removed." }
+  }
 
   const { error } = await supabase
     .from("quiz_questions")

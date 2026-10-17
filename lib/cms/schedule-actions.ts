@@ -179,8 +179,10 @@ export async function scheduleQuestion(
   // If this question previously ran on a past date, preserve that as its
   // "previous usage" record before overwriting question_date with the new
   // scheduled date, so cooldown checks stay accurate.
+  // Never move last_used_at backwards: that would shorten the cooldown.
   if (existing.question_date && existing.question_date !== date && existing.question_date < today) {
-    patch.last_used_at = existing.question_date
+    const latestUse = previousUseDate(existing, today)
+    if (latestUse) patch.last_used_at = latestUse
   }
 
   if (position !== undefined) {
@@ -219,6 +221,11 @@ export async function unscheduleQuestion(id: number): Promise<{ success: boolean
     .select("question_date")
     .eq("id", id)
     .single()
+
+  const today = new Date().toISOString().slice(0, 10)
+  if (existing?.question_date && existing.question_date < today) {
+    return { success: false, error: "This question already ran on a past date; its usage history can't be removed." }
+  }
 
   const { error } = await supabase
     .from("quiz_questions")
